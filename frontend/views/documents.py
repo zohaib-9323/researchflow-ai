@@ -134,7 +134,7 @@ with head:
     section("In this collection", plural(len(documents), "document"))
 if ready:
     action.page_link(
-        "pages/research.py",
+        "views/research.py",
         label="Ask about these",
         icon=":material/arrow_forward:",
         use_container_width=True,

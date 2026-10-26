@@ -389,7 +389,7 @@ elif doc_count == 0:
             load_sample_documents(collection_id)
             st.rerun()
         second.page_link(
-            "pages/documents.py",
+            "views/documents.py",
             label="Upload my own documents",
             icon=":material/upload:",
             use_container_width=True,

@@ -76,7 +76,8 @@ def build_gemini_factory(settings: Settings) -> ModelFactory:
     return factory
 
 
-_API_KEY = re.compile(r"AIza[0-9A-Za-z_\-]{20,}")
+# Classic "AIza..." keys and the newer "AQ." key format.
+_API_KEY = re.compile(r"AIza[0-9A-Za-z_\-]{20,}|AQ\.[0-9A-Za-z_\-]{20,}")
 
 
 def redact_secrets(text: str) -> str:

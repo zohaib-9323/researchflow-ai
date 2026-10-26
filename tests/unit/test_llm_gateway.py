@@ -160,4 +160,6 @@ def test_redact_secrets_removes_google_keys() -> None:
 
     fake_key = "AIza" + "x" * 35
     assert fake_key not in redact_secrets(f"403 for key {fake_key}: denied")
+    new_format = "AQ." + "y" * 40
+    assert new_format not in redact_secrets(f"key {new_format} rejected")
     assert redact_secrets("plain message") == "plain message"

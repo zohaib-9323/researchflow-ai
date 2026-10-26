@@ -38,7 +38,7 @@ if not conversations:
             "<h3>Nothing here yet</h3><p>Your questions and answers will appear here "
             "automatically.</p></div>"
         )
-        st.page_link("pages/research.py", label="Ask your first question", icon=":material/search:")
+        st.page_link("views/research.py", label="Ask your first question", icon=":material/search:")
     st.stop()
 
 collection_names = {c["id"]: c["name"] for c in list_collections()}
@@ -92,4 +92,4 @@ for conversation in shown:
             st.session_state["conversation_id"] = conversation["id"]
             st.session_state["collection_id"] = conversation["collection_id"]
             st.session_state.pop("reports", None)
-            st.switch_page("pages/research.py")
+            st.switch_page("views/research.py")

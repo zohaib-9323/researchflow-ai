@@ -96,7 +96,7 @@ app/
   services/          document, retrieval, research and report services
   evaluation/        evaluation runner
   scripts/           rebuild_index, seed_demo
-frontend/            Streamlit app (pages, design system, embedded-API mode)
+frontend/            Streamlit app (views, design system, embedded-API mode)
 evaluation/          sample documents and labelled questions
 tests/               unit, graph, API and (opt-in) live tests
 deploy/huggingface/  single-container image for Hugging Face Spaces
