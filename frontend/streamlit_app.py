@@ -2,8 +2,9 @@
 
 Run with:  streamlit run frontend/streamlit_app.py
 
-Set APP_ACCESS_CODE to require a shared code before the app opens (used for public
-deployments so visitors can't spend the Gemini quota).
+On single-process hosts (Streamlit Community Cloud) the API runs inside this process,
+see embedded.py. Set APP_ACCESS_CODE to require a shared code before the app opens (used
+for public deployments so visitors can't spend the Gemini quota).
 """
 
 from __future__ import annotations
@@ -11,10 +12,15 @@ from __future__ import annotations
 import hmac
 import os
 
+import embedded
 import streamlit as st
 from ui_common import CSS, hero, html_block
 
 st.set_page_config(page_title="ResearchFlow AI", page_icon="🔎", layout="wide")
+
+embedded.export_secrets()
+if embedded.enabled():
+    embedded.ensure_backend()
 
 ACCESS_CODE = os.environ.get("APP_ACCESS_CODE", "")
 

@@ -153,3 +153,11 @@ def test_records_which_model_answered(tmp_path: Path) -> None:
     finally:
         models_used_var.reset(token)
     assert used == ["lite"]
+
+
+def test_redact_secrets_removes_google_keys() -> None:
+    from app.llm.models import redact_secrets
+
+    fake_key = "AIza" + "x" * 35
+    assert fake_key not in redact_secrets(f"403 for key {fake_key}: denied")
+    assert redact_secrets("plain message") == "plain message"

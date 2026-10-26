@@ -64,7 +64,7 @@ class Settings(BaseSettings):
     llm_max_transient_failovers: int = Field(default=3, ge=1, le=10)
 
     # --- Embeddings ---------------------------------------------------------------
-    embedding_provider: Literal["huggingface", "hashing"] = "huggingface"
+    embedding_provider: Literal["huggingface", "fastembed", "hashing"] = "huggingface"
     embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
     embedding_device: str = "cpu"
 

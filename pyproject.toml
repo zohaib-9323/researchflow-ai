@@ -34,6 +34,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# PyTorch-free embeddings for small hosts (Streamlit Community Cloud); Linux/Apple silicon.
+fastembed = ["fastembed>=0.7,<1"]
 dev = [
     "pytest>=8.3",
     "ruff>=0.8",

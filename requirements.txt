@@ -1,0 +1,22 @@
+# Dependencies for Streamlit Community Cloud (single-process deployment).
+# Same as pyproject.toml, but with fastembed (ONNX Runtime) for embeddings instead of
+# sentence-transformers/PyTorch, which is too large for the free tier.
+# Local development and Docker use pyproject.toml (`pip install -e ".[dev]"`).
+langchain-core>=1.7,<2
+langchain-google-genai>=4.4,<5
+langchain-text-splitters>=1.1,<2
+langgraph>=1.2,<2
+langgraph-checkpoint-sqlite>=3.1,<4
+faiss-cpu>=1.12,<2
+numpy>=1.26
+pymupdf>=1.26,<2
+fastapi>=0.115,<1
+uvicorn>=0.30
+python-multipart>=0.0.9
+pydantic>=2.9,<3
+pydantic-settings>=2.6,<3
+python-dotenv>=1.0
+sqlalchemy>=2.0,<3
+streamlit>=1.40,<2
+httpx>=0.27,<1
+fastembed>=0.7,<1

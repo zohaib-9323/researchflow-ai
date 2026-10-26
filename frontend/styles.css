@@ -276,3 +276,8 @@ header[data-testid="stHeader"] {background:transparent;}
   var(--rf-brand-2)); border:0; box-shadow:0 4px 14px rgba(79,70,229,.28); font-weight:600;}
 [data-testid="stForm"] {background:#fff; border-color:var(--rf-line); border-radius:16px;
   box-shadow:var(--rf-shadow);}
+/* rows: keep content inside the card (Streamlit's markdown has a negative bottom margin) */
+[class*="st-key-histrow_"], [class*="st-key-docrow_"] {padding:16px 20px 18px !important;}
+[class*="st-key-histrow_"] [data-testid="stMarkdownContainer"],
+[class*="st-key-docrow_"] [data-testid="stMarkdownContainer"] {margin-bottom:0; padding-bottom:2px;}
+[class*="st-key-histrow_"] [data-testid="stBaseButton-primary"] {min-height:40px;}

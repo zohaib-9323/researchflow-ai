@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import math
 import re
+from collections.abc import Sequence
 
 from langchain_core.embeddings import Embeddings
 
@@ -43,16 +44,52 @@ class HashingEmbeddings(Embeddings):
         return self._embed(text)
 
 
+class FastEmbedEmbeddings(Embeddings):
+    """sentence-transformers models run on ONNX Runtime via fastembed — no PyTorch.
+
+    Used on small hosts such as Streamlit Community Cloud. Vectors are L2-normalised so
+    inner-product search equals cosine similarity, as with the HuggingFace provider.
+    Small batches keep ONNX Runtime's memory arena small: fastembed's default of 256
+    peaks around 1.8 GB on long passages, 16 stays under 400 MB.
+    """
+
+    batch_size = 16
+
+    def __init__(self, model_name: str) -> None:
+        try:
+            from fastembed import TextEmbedding
+        except ImportError as exc:  # pragma: no cover - depends on platform
+            raise EmbeddingUnavailableError(
+                "fastembed is not installed (pip install fastembed). It needs ONNX Runtime, "
+                "which has no wheels for some platforms such as Intel macOS."
+            ) from exc
+        self._model = TextEmbedding(model_name)
+
+    @staticmethod
+    def _normalise(vector: Sequence[float]) -> list[float]:
+        values = [float(v) for v in vector]
+        norm = math.sqrt(sum(v * v for v in values)) or 1.0
+        return [v / norm for v in values]
+
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        return [self._normalise(v) for v in self._model.embed(texts, batch_size=self.batch_size)]
+
+    def embed_query(self, text: str) -> list[float]:
+        return self._normalise(next(iter(self._model.query_embed([text]))))
+
+
 def embedding_model_id(settings: Settings) -> str:
     """Identifier stored with each index so a model change is detected."""
     if settings.embedding_provider == "hashing":
         return "hashing-384"
-    return f"huggingface:{settings.embedding_model}"
+    return f"{settings.embedding_provider}:{settings.embedding_model}"
 
 
 def build_embeddings(settings: Settings) -> Embeddings:
     if settings.embedding_provider == "hashing":
         return HashingEmbeddings()
+    if settings.embedding_provider == "fastembed":
+        return FastEmbedEmbeddings(settings.embedding_model)
     try:
         from langchain_huggingface import HuggingFaceEmbeddings
     except ImportError as exc:  # pragma: no cover - depends on platform

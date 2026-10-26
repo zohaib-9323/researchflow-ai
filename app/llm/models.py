@@ -7,6 +7,7 @@ validates the result and converts provider errors into domain errors.
 
 from __future__ import annotations
 
+import re
 import threading
 from collections.abc import Callable
 from contextvars import ContextVar
@@ -73,6 +74,14 @@ def build_gemini_factory(settings: Settings) -> ModelFactory:
         )
 
     return factory
+
+
+_API_KEY = re.compile(r"AIza[0-9A-Za-z_\-]{20,}")
+
+
+def redact_secrets(text: str) -> str:
+    """Remove anything that looks like a Google API key before logging."""
+    return _API_KEY.sub("[redacted]", text)
 
 
 def classify_provider_error(exc: BaseException, settings: Settings) -> KeyFailure | None:
@@ -157,12 +166,25 @@ class LLMGateway:
                 used.append(entry.model)
             return validated
 
+        def classify(exc: BaseException) -> KeyFailure | None:
+            failure = classify_provider_error(exc, self.settings)
+            if failure is not None:
+                logger.warning(
+                    "llm_provider_failure",
+                    extra={
+                        "task": task,
+                        "error_type": type(exc).__name__,
+                        "error": redact_secrets(str(exc))[:300],
+                    },
+                )
+            return failure
+
         attempts = self.settings.llm_invalid_output_retries + 1
         for attempt in range(1, attempts + 1):
             try:
                 return self.pool.execute(
                     operation,
-                    lambda exc: classify_provider_error(exc, self.settings),
+                    classify,
                     max_transient_failures=self.settings.llm_max_transient_failovers,
                 )
             except _InvalidOutputError:
