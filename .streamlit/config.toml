@@ -1,0 +1,15 @@
+[server]
+# Matches the API's default MAX_UPLOAD_SIZE_MB so the uploader shows the real limit.
+maxUploadSize = 20
+
+[client]
+toolbarMode = "minimal"
+
+[browser]
+gatherUsageStats = false
+
+[theme]
+primaryColor = "#2563eb"
+backgroundColor = "#ffffff"
+secondaryBackgroundColor = "#f4f6fb"
+textColor = "#1f2937"

@@ -1,0 +1,10 @@
+{"id": "q1", "question": "By how much did participating households reduce grid electricity consumption in the solar pilot?", "answerable": true, "expected_documents": ["larkspur_solar_pilot_report.txt"], "expected_terms": ["18 percent"]}
+{"id": "q2", "question": "How much did the Community Solar Pilot cost and who funded it?", "answerable": true, "expected_documents": ["larkspur_solar_pilot_report.txt"], "expected_terms": ["1.2 million", "Green Futures Fund"]}
+{"id": "q3", "question": "Why does the finance committee report a different savings figure from the pilot report?", "answerable": true, "expected_documents": ["larkspur_council_memo.txt"], "expected_terms": ["heat pump", "12 percent"]}
+{"id": "q4", "question": "How many homes does the finance committee support expanding the programme to in 2026?", "answerable": true, "expected_documents": ["larkspur_council_memo.txt"], "expected_terms": ["500"]}
+{"id": "q5", "question": "How many wells exceeded the nitrate limit and where were they located?", "answerable": true, "expected_documents": ["larkspur_water_quality.txt"], "expected_terms": ["nine", "Hollow Creek"]}
+{"id": "q6", "question": "Why was battery storage left out of the solar pilot?", "answerable": true, "expected_documents": ["larkspur_solar_pilot_report.txt"], "expected_terms": ["budget"]}
+{"id": "q7", "question": "What did residents with affected wells receive?", "answerable": true, "expected_documents": ["larkspur_water_quality.txt"], "expected_terms": ["filtration"]}
+{"id": "q8", "question": "What was the hourly wage paid to the solar installers?", "answerable": false, "expected_documents": [], "expected_terms": []}
+{"id": "q9", "question": "What were the lead concentrations measured in the wells?", "answerable": false, "expected_documents": [], "expected_terms": []}
+{"id": "q10", "question": "Who won the Larkspur mayoral election in 2024?", "answerable": false, "expected_documents": [], "expected_terms": []}
