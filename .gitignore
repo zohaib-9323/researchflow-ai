@@ -34,3 +34,6 @@ data/*.tmp
 .idea/
 .vscode/
 evaluation/results/
+
+# Streamlit secrets (Google sign-in, keys)
+.streamlit/secrets.toml

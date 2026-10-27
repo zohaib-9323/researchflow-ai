@@ -19,7 +19,8 @@ import httpx
 import streamlit as st
 
 ROOT = Path(__file__).resolve().parent.parent
-HOST, PORT = "127.0.0.1", 8000
+HOST = "127.0.0.1"
+PORT = int(os.environ.get("EMBEDDED_API_PORT", "8000"))
 logger = logging.getLogger("researchflow.embedded")
 
 

@@ -20,7 +20,7 @@ import os
 
 import embedded
 import streamlit as st
-from ui_common import CSS, auth_configured, hero, html_block
+from ui_common import CSS, auth_configured, hero, html_block, icon
 
 st.set_page_config(page_title="ResearchFlow AI", page_icon="🔎", layout="wide")
 
@@ -38,24 +38,55 @@ def _centered_hero(eyebrow: str, subtitle: str) -> None:
     hero(eyebrow, 'Research<span class="rf-grad">Flow</span> AI', subtitle)
 
 
+SIGN_IN_SCENE = (
+    '<div class="rf-scene">'
+    '<div class="rf-paper p1"><h5>Solar pilot report</h5><div class="rf-line"></div>'
+    '<div class="rf-line hl" style="width:86%"></div><div class="rf-line" style="width:70%">'
+    '</div><div class="rf-line" style="width:92%"></div></div>'
+    '<div class="rf-paper p2"><h5>Council memo</h5><div class="rf-line" style="width:80%"></div>'
+    '<div class="rf-line"></div><div class="rf-line hl" style="width:64%"></div></div>'
+    '<div class="rf-paper p3"><div class="rf-paper-quote">The pilot cut grid electricity use by '
+    "18%, though the council's re-analysis puts it at 12%.</div>"
+    '<div class="rf-row" style="margin-top:10px"><span class="rf-cite">1</span>'
+    '<span class="rf-cite">2</span></div>'
+    f'<span class="rf-check">{icon("check")}Checked against both sources</span></div></div>'
+)
+
+
 def sign_in_page() -> None:
-    _, middle, _ = st.columns([1, 2, 1])
-    with middle:
-        _centered_hero(
-            "Free to try",
-            "Cited, fact-checked answers from your documents, and an autonomous agent that "
-            "researches and writes reports. Sign in with Google to get free credits: "
-            f"{os.environ.get('FREE_QUESTIONS', '2')} questions and "
-            f"{os.environ.get('FREE_AGENT_RUNS', '2')} deep research runs.",
+    html_block(CSS + "<style>[data-testid='stSidebar']{display:none}</style>")
+    questions = os.environ.get("FREE_QUESTIONS", "2")
+    runs = os.environ.get("FREE_AGENT_RUNS", "2")
+    points = [
+        ("quote", "Answers you can check", "every claim links to the passage it came from."),
+        ("map", "A research agent", "that plans, reads, compares and writes you a report."),
+        ("spark", "Free to try", f"{questions} questions and {runs} deep research runs."),
+    ]
+    copy, scene = st.columns([1.05, 1], gap="large", vertical_alignment="center")
+    with copy:
+        st.write("")
+        hero(
+            "Welcome",
+            'Research, <span class="rf-grad">thoughtfully</span> done',
+            "Ask questions about your documents and get careful, cited answers, never guesses.",
         )
-        if st.button(
-            "Continue with Google",
-            type="primary",
-            icon=":material/login:",
-            use_container_width=True,
-        ):
+        html_block(
+            '<ul class="rf-auth-points">'
+            + "".join(
+                f'<li><span class="rf-step-icon">{icon(name)}</span>'
+                f"<span><b>{title}</b> {text}</span></li>"
+                for name, title, text in points
+            )
+            + "</ul>"
+        )
+        if st.button("Continue with Google", key="google_signin", use_container_width=True):
             st.login("google")
-        st.caption("We only use your Google account's name and email to keep your credits.")
+        html_block(
+            '<div class="rf-fine">We only use your Google name and email, to keep track of '
+            "your free credits.</div>"
+        )
+    with scene:
+        html_block(SIGN_IN_SCENE)
 
 
 def unverified_page() -> None:

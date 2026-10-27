@@ -34,9 +34,9 @@ except ApiError as exc:
 if not conversations:
     with st.container(key="emptystate"):
         html_block(
-            '<div class="rf-empty"><div class="rf-empty-icon">🕘</div>'
-            "<h3>Nothing here yet</h3><p>Your questions and answers will appear here "
-            "automatically.</p></div>"
+            '<div class="rf-empty"><div class="rf-empty-art"><span></span><span></span></div>'
+            "<h3>No conversations yet</h3><p>Ask your first question and it'll be saved "
+            "here, so you can come back to it or keep the conversation going.</p></div>"
         )
         st.page_link("views/research.py", label="Ask your first question", icon=":material/search:")
     st.stop()

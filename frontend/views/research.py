@@ -20,7 +20,9 @@ from ui_common import (
     get_client,
     hero,
     html_block,
+    icon,
     load_sample_documents,
+    orb,
     out_of_credits_notice,
     plural,
     section,
@@ -32,11 +34,10 @@ info = setup_page()
 state = st.session_state
 
 hero(
-    "Research assistant",
+    "Grounded answers, never guesses",
     'Ask your <span class="rf-grad">documents</span>',
-    "Answers grounded in your own PDFs and text files. Every claim links to the exact passage "
-    "it came from, is fact-checked by an agent, and the assistant says so when the documents "
-    "don't know.",
+    "Ask a question in plain language. Every sentence in the answer links to the passage it "
+    "came from, and if your documents don't say, you'll be told so.",
 )
 
 # -- current conversation -------------------------------------------------------------------
@@ -75,9 +76,9 @@ llm_ready = bool(info and info["llm_configured"])
 if conversation is not None:
     html_block(
         '<div class="rf-row" style="margin-top:6px">'
-        + chip("Conversation in progress", "brand", dot=True)
+        + chip("Conversation", "brand", dot=True)
         + chip(plural(conversation["turn_count"], "question"))
-        + '<span class="rf-muted">Follow-up questions can refer to earlier answers.</span></div>'
+        + '<span class="rf-muted">Ask a follow-up; I remember what we discussed.</span></div>'
     )
 
 
@@ -106,17 +107,15 @@ def answer_body(turn: dict[str, Any], anchor: str) -> str:
 
 
 def pipeline_track(execution: dict[str, Any]) -> str:
+    """One quiet line showing how the answer was produced."""
     nodes = []
     for step in execution["steps"]:
         short = STAGES.get(step["node"], (step["node"], ""))[0]
-        if step["node"] in RETRY_NODES:
-            nodes.append(f'<span class="rf-node retry"><i>↻</i>{esc(short)}</span>')
-        else:
-            nodes.append(f'<span class="rf-node"><i>✓</i>{esc(short)}</span>')
-    arrow = '<span class="rf-arrow">→</span>'
+        css = ' class="retry"' if step["node"] in RETRY_NODES else ""
+        nodes.append(f"<b{css}>{esc(short)}</b>")
     return (
-        '<div class="rf-track"><span class="rf-track-label">Agent path</span>'
-        + arrow.join(nodes)
+        f'<div class="rf-path">{icon("map")}&nbsp;How I got here&nbsp;·&nbsp;'
+        + '<span class="sep">&rsaquo;</span>'.join(nodes)
         + "</div>"
     )
 
@@ -139,7 +138,7 @@ def sources_grid(turn: dict[str, Any], anchor: str) -> str:
 def render_trace(turn: dict[str, Any]) -> None:
     execution = turn["execution"]
     evaluation = turn.get("evaluation")
-    with st.expander("Agent trace — how this answer was produced", icon=":material/account_tree:"):
+    with st.expander("How this answer was checked", icon=":material/fact_check:"):
         passed = "Passed" if execution["passed_evaluation"] else "Not passed"
         html_block(
             '<div class="rf-mini">'
@@ -181,7 +180,7 @@ def render_passages(turn: dict[str, Any]) -> None:
         return
     cited = {c["source_id"] for c in turn["citations"]}
     with st.expander(
-        f"All passages found ({len(turn['evidence'])})", icon=":material/format_quote:"
+        f"Everything I read ({len(turn['evidence'])} passages)", icon=":material/format_quote:"
     ):
         st.caption("Everything the search returned, best match first. ★ = used in the answer.")
         blocks = []
@@ -245,8 +244,7 @@ def render_report(turn: dict[str, Any]) -> None:
 
 def render_question(text: str, number: int) -> None:
     html_block(
-        f'<div class="rf-q"><div class="rf-q-avatar">Q{number}</div><div>'
-        f'<div class="rf-q-label">Your question</div><div class="rf-q-text">{esc(text)}</div>'
+        f'<div class="rf-q"><div class="rf-q-bubble"><small>You asked</small>{esc(text)}'
         "</div></div>"
     )
 
@@ -266,15 +264,17 @@ def render_turn(turn: dict[str, Any], number: int) -> None:
         if (seconds := state.get("durations", {}).get(turn.get("turn_id"))) is not None:
             meta.append(chip(f"{seconds:.0f} s"))
         html_block(
-            '<div class="rf-answer-head">'
-            + chip(label, tone, dot=True, large=True)
-            + f'<div class="rf-row">{"".join(meta)}</div></div>'
-            + (f'<div class="rf-answer-note">{esc(explanation)}</div>' if explanation else "")
+            '<div class="rf-a-head"><div class="rf-a-who">'
+            + orb(36)
+            + '<div><div class="rf-a-name">ResearchFlow</div>'
+            + f'<div class="rf-a-sub">{esc(explanation or label)}</div></div></div>'
+            + chip(label, tone, dot=True)
+            + f'<div class="rf-row rf-a-meta">{"".join(meta)}</div></div>'
             + answer_body(turn, anchor)
             + (pipeline_track(execution) if execution["steps"] else "")
         )
         if turn["citations"]:
-            section("Sources", "Click a citation in the answer to jump to its passage.")
+            section("Sources", "Tap a citation number to jump to its passage.")
             html_block(sources_grid(turn, anchor))
         if turn["limitations"]:
             callout = "warn" if turn["status"] == "partial" else "info"
@@ -293,12 +293,15 @@ def ask(question: str, number: int) -> None:
     render_question(question, number)
     with st.container(key="thinking"):
         html_block(
-            '<div class="rf-think-head"><span class="rf-spin"></span>Researching your documents…'
-            '</div><div class="rf-think-steps"><span>Understand the question</span>'
-            "<span>Search passages</span><span>Draft an answer</span>"
-            "<span>Fact-check &amp; cite</span></div>"
-            '<div class="rf-muted">Usually 15 to 60 seconds. If the AI service is busy the agent '
-            "waits and retries automatically.</div>"
+            '<div class="rf-think">'
+            + orb(44, live=True)
+            + '<div style="flex:1"><div class="rf-think-title">Researching your documents</div>'
+            '<div class="rf-think-rotor"><span>Understanding your question…</span>'
+            "<span>Searching passages by meaning…</span><span>Drafting an answer…</span>"
+            "<span>Fact-checking every sentence…</span></div>"
+            '<div class="rf-skeleton"><i></i><i></i><i></i></div>'
+            '<div class="rf-muted" style="margin-top:14px">Usually 15 to 60 seconds. If the AI '
+            "is busy I'll wait and retry automatically.</div></div></div>"
         )
         started = time.monotonic()
         try:
@@ -320,33 +323,33 @@ def ask(question: str, number: int) -> None:
 
 
 def render_welcome() -> None:
+    steps = [
+        ("search", "Ask naturally", "Any question about the documents in this collection."),
+        ("doc", "I read for meaning", "I find the passages that matter, not just keywords."),
+        ("shield", "Every claim is checked", "Anything your documents don't support is removed."),
+        ("quote", "See the receipts", "Each sentence links to its document, page and quote."),
+    ]
     html_block(
-        '<div class="rf-steps">'
-        '<div class="rf-step"><div class="rf-step-n">01 · ASK</div><div class="rf-step-t">'
-        'Ask in plain language</div><div class="rf-step-d">Any question about the documents '
-        "in the selected collection.</div></div>"
-        '<div class="rf-step"><div class="rf-step-n">02 · SEARCH</div><div class="rf-step-t">'
-        'Search by meaning</div><div class="rf-step-d">Relevant passages are found with '
-        "semantic vector search.</div></div>"
-        '<div class="rf-step"><div class="rf-step-n">03 · VERIFY</div><div class="rf-step-t">'
-        'Fact-check the draft</div><div class="rf-step-d">Unsupported claims are removed; '
-        "weak evidence triggers a new search.</div></div>"
-        '<div class="rf-step"><div class="rf-step-n">04 · CITE</div><div class="rf-step-t">'
-        'Show the receipts</div><div class="rf-step-d">Every claim links to its document, '
-        "page and quote.</div></div></div>"
+        '<div class="rf-steps rf-stagger">'
+        + "".join(
+            f'<div class="rf-step"><div class="rf-step-icon">{icon(i)}</div>'
+            f'<div class="rf-step-t">{esc(t)}</div><div class="rf-step-d">{esc(d)}</div></div>'
+            for i, t, d in steps
+        )
+        + "</div>"
     )
     try:
         documents = client.get("/documents", collection_id=collection_id)
     except ApiError:
         documents = []
     examples = examples_for([d["filename"] for d in documents])
-    section("Try an example", "Picked for the documents in this collection.")
+    section("Try asking", "Picked for the documents in this collection.")
     with st.container(key="examples"):
         columns = st.columns(2)
         for number, example in enumerate(examples):
             honesty_test = number == len(examples) - 1 and len(examples) == 4
             if columns[number % 2].button(
-                example + ("  (not in the documents: tests honesty)" if honesty_test else ""),
+                example + ("  (not in the documents, to test my honesty)" if honesty_test else ""),
                 key=f"example_{number}",
                 icon=":material/shield:" if honesty_test else ":material/arrow_outward:",
                 disabled=not llm_ready or credits_left("question") == 0,
@@ -377,10 +380,10 @@ elif collection is None:
 elif doc_count == 0:
     with st.container(key="emptystate"):
         html_block(
-            '<div class="rf-empty"><div class="rf-empty-icon">📂</div>'
-            "<h3>This collection has no documents yet</h3><p>Add PDF or TXT files first. Not "
-            "sure what to use? Load the sample documents — three short reports about a "
-            "fictional town — and try the example questions.</p></div>"
+            '<div class="rf-empty"><div class="rf-empty-art"><span></span><span></span></div>'
+            "<h3>Nothing to read yet</h3><p>Add PDF or text files to this collection and I'll "
+            "answer questions about them. Not sure what to use? Load the sample documents, "
+            "three short reports about a fictional town.</p></div>"
         )
         first, second = st.columns(2)
         if can_manage_documents() and first.button(

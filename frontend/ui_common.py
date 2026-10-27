@@ -239,6 +239,51 @@ def file_badge(file_type: str, small: bool = False) -> str:
     return f'<span class="rf-file {esc(kind)}{size}">{esc(kind.upper()[:4])}</span>'
 
 
+# Line icons (stroke SVG, inherit the text colour), so the UI uses one drawn icon set
+# instead of emoji.
+ICONS = {
+    "search": '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
+    "doc": '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/>'
+    '<path d="M14 3v5h5M9 13h6M9 17h4"/>',
+    "check": '<path d="m5 12.5 4.2 4.2L19 7"/>',
+    "shield": '<path d="M12 3 5 6v5c0 4.4 3 8.3 7 10 4-1.7 7-5.6 7-10V6z"/>'
+    '<path d="m9 12 2 2 4-4"/>',
+    "quote": '<path d="M7 17c-2 0-3-1.5-3-3.5C4 10 6 7.5 9 7M17 17c-2 0-3-1.5-3-3.5'
+    'C14 10 16 7.5 19 7"/>',
+    "spark": '<path d="M12 3v4M12 17v4M3 12h4M17 12h4M6.3 6.3l2.5 2.5M15.2 15.2l2.5 2.5'
+    'M6.3 17.7l2.5-2.5M15.2 8.8l2.5-2.5"/>',
+    "map": '<path d="M9 4 3 6.5v13L9 17l6 2.5 6-2.5V4l-6 2.5z"/><path d="M9 4v13M15 6.5v13"/>',
+    "compare": '<path d="M8 3v18M16 3v18"/><path d="m4 8 4-4 4 4M12 16l4 4 4-4"/>',
+    "calc": '<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8 7h8M8 12h.01M12 12h.01'
+    'M16 12h.01M8 16h.01M12 16h.01M16 16h.01"/>',
+    "globe": '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.7 3.8 5.7 3.8 9'
+    's-1.3 6.3-3.8 9c-2.5-2.7-3.8-5.7-3.8-9S9.5 5.7 12 3z"/>',
+    "eye": '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" '
+    'cy="12" r="3"/>',
+    "retry": '<path d="M3 12a9 9 0 0 1 15.5-6.2L21 8M21 3v5h-5M21 12a9 9 0 0 1-15.5 6.2L3 16'
+    'M3 21v-5h5"/>',
+    "pen": '<path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16z"/><path d="m13.5 6.5 4 4"/>',
+    "flag": '<path d="M5 21V4M5 4h11l-2 4 2 4H5"/>',
+    "play": '<path d="m7 4 13 8-13 8z"/>',
+    "lock": '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
+    "list": '<path d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01"/>',
+}
+
+
+def icon(name: str) -> str:
+    return f'<svg class="rf-ico" viewBox="0 0 24 24" aria-hidden="true">{ICONS.get(name, "")}</svg>'
+
+
+def orb(size: int = 38, live: bool = False) -> str:
+    """The assistant's animated presence (spins and breathes while it is working)."""
+    return f'<span class="rf-orb{" live" if live else ""}" style="--s:{size}px"></span>'
+
+
+def initials(name: str) -> str:
+    parts = [p for p in re.split(r"[\s._@-]+", name) if p]
+    return "".join(p[0] for p in parts[:2]).upper() or "?"
+
+
 def hero(eyebrow: str, title_html: str, subtitle: str) -> None:
     html_block(
         f'<div class="rf-hero"><span class="rf-eyebrow"><i></i>{esc(eyebrow)}</span>'
@@ -270,7 +315,7 @@ def cite_links(text: str, anchor_prefix: str) -> str:
 # -- page chrome -------------------------------------------------------------------------------
 def setup_page() -> dict[str, Any] | None:
     """Inject styles and render the sidebar; returns backend health (None if down)."""
-    html_block(CSS)
+    html_block(CSS + '<div class="rf-aurora"><i></i><i></i><i></i></div>')
     try:
         info = get_client().get("/health")
     except ApiError:
@@ -282,10 +327,10 @@ def setup_page() -> dict[str, Any] | None:
     with st.sidebar:
         html_block(
             f'<div class="rf-brand"><div class="rf-logo">{LOGO_SVG}</div><div>'
-            '<div class="rf-brand-name">Research<b>Flow</b> AI</div>'
-            '<div class="rf-brand-tag">Grounded answers from your documents</div></div></div>'
+            '<div class="rf-brand-name">Research<b>Flow</b></div>'
+            '<div class="rf-brand-tag">Your documents, thoughtfully researched</div></div></div>'
         )
-        html_block('<div class="rf-side-label">Workspace</div>')
+        html_block('<div class="rf-side-label">Explore</div>')
         st.page_link("views/research.py", label="Ask your documents", icon=":material/search:")
         st.page_link("views/agent.py", label="Deep research", icon=":material/travel_explore:")
         st.page_link("views/documents.py", label="Document library", icon=":material/folder_open:")
@@ -302,48 +347,61 @@ def setup_page() -> dict[str, Any] | None:
         elif info["llm_configured"]:
             keys = info["llm_keys"]
             if keys["available_entries"]:
-                _status(
-                    "ok",
-                    "AI assistant ready",
-                    f"{keys['active_model']} · {plural(keys['total_keys'], 'API key')}",
-                )
+                _status("ok", "Ready to research", "Every answer is checked against sources")
             else:
-                _status("warn", "AI quota used up", "Answers will fail until the quota resets")
-            with st.expander("System details"):
-                st.markdown(
-                    f"- Model in use: `{keys['active_model']}` (key {keys['active_slot']} "
-                    f"of {keys['total_keys']})\n"
-                    f"- Fallback models: {', '.join(info['llm_fallback_models']) or 'none'}\n"
-                    f"- Usable key/model combinations: {keys['available_entries']} of "
-                    f"{keys['total_entries']}\n"
-                    f"- Embeddings: `{info['embedding_model']}`\n"
-                    f"- Automatic retries per question: up to {info['max_retries']}"
-                )
+                _status("warn", "Taking a short break", "The AI's daily limit was reached")
+            if can_manage_documents():  # technical details are for the administrator
+                _system_details(info, keys)
         else:
-            _status("warn", "Limited mode", "No Gemini API key — add GOOGLE_API_KEY_1")
+            _status("warn", "Limited mode", "No Gemini API key: add GOOGLE_API_KEY_1")
         html_block(
-            '<div class="rf-side-foot">LangGraph agent · Gemini · FAISS vector search<br>'
-            "Answers cite only your documents.</div>"
+            '<div class="rf-side-foot">Answers come only from your documents, with a '
+            "citation for every claim.</div>"
         )
     return info
+
+
+def _system_details(info: dict[str, Any], keys: dict[str, Any]) -> None:
+    with st.sidebar, st.expander("System details"):
+        st.markdown(
+            f"- Model in use: `{keys['active_model']}` (key {keys['active_slot']} "
+            f"of {keys['total_keys']})\n"
+            f"- Fallback models: {', '.join(info['llm_fallback_models']) or 'none'}\n"
+            f"- Usable key/model combinations: {keys['available_entries']} of "
+            f"{keys['total_entries']}\n"
+            f"- Embeddings: `{info['embedding_model']}`\n"
+            f"- Automatic retries per question: up to {info['max_retries']}"
+        )
+
+
+def _meter(label: str, credit: dict[str, Any]) -> str:
+    left, limit = credit["remaining"], credit["limit"] or 1
+    width = max(0, min(100, round(left / limit * 100)))
+    return (
+        f'<div><div class="rf-meter-top">{esc(label)}<span>{left} of {limit} left</span></div>'
+        f'<div class="rf-meter"><b style="width:{width}%"></b></div></div>'
+    )
 
 
 def _account_box(user: dict[str, str]) -> None:
     me = account()
     if me.get("is_admin"):
-        detail = "Administrator · unlimited"
+        detail = f'<span class="rf-admin">{icon("shield")}Administrator · unlimited</span>'
     elif me.get("credits"):
-        q, a = me["credits"]["question"], me["credits"]["agent_run"]
         detail = (
-            f"Questions: {q['remaining']} of {q['limit']} left<br>"
-            f"Deep research: {a['remaining']} of {a['limit']} left"
+            '<div class="rf-meters">'
+            + _meter("Questions", me["credits"]["question"])
+            + _meter("Deep research", me["credits"]["agent_run"])
+            + "</div>"
         )
     else:
         detail = ""
+    name = user["name"] or user["email"]
     html_block(
-        f'<div class="rf-status"><div class="rf-status-top">{esc(user["name"] or user["email"])}'
-        f'</div><div class="rf-status-sub" style="padding-left:0">{esc(user["email"])}<br>'
-        f"{detail}</div></div>"
+        '<div class="rf-account" style="display:block"><div style="display:flex;gap:11px;'
+        f'align-items:center"><span class="rf-avatar">{esc(initials(name))}</span>'
+        f'<div style="min-width:0"><div class="rf-account-name">{esc(name)}</div>'
+        f'<div class="rf-account-mail">{esc(user["email"])}</div></div></div>{detail}</div>'
     )
     if st.button("Sign out", icon=":material/logout:", key="sign_out", type="tertiary"):
         st.logout()
@@ -351,8 +409,9 @@ def _account_box(user: dict[str, str]) -> None:
 
 def _status(tone: str, title: str, subtitle: str) -> None:
     html_block(
-        f'<div class="rf-status {tone}"><div class="rf-status-top"><span class="rf-pulse"></span>'
-        f'{esc(title)}</div><div class="rf-status-sub">{esc(subtitle)}</div></div>'
+        f'<div class="rf-status {tone}"><span class="rf-pulse"></span><div>'
+        f'<div class="rf-status-top">{esc(title)}</div>'
+        f'<div class="rf-status-sub">{esc(subtitle)}</div></div></div>'
     )
 
 

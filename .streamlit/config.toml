@@ -9,7 +9,7 @@ toolbarMode = "minimal"
 gatherUsageStats = false
 
 [theme]
-primaryColor = "#2563eb"
-backgroundColor = "#ffffff"
-secondaryBackgroundColor = "#f4f6fb"
-textColor = "#1f2937"
+primaryColor = "#5b47e0"
+backgroundColor = "#f7f4ef"
+secondaryBackgroundColor = "#efeae2"
+textColor = "#1b1724"
