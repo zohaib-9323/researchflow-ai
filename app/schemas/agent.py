@@ -15,6 +15,7 @@ class RunSummary(BaseModel):
     id: str
     collection_id: str
     objective: str
+    owner_email: str | None = None
     status: str
     resumable: bool
     has_report: bool

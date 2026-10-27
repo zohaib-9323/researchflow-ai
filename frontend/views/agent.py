@@ -13,11 +13,13 @@ from ui_common import (
     ApiError,
     chip,
     collection_selector,
+    credits_left,
     esc,
     friendly_time,
     get_client,
     hero,
     html_block,
+    out_of_credits_notice,
     plural,
     section,
     setup_page,
@@ -78,6 +80,10 @@ def status_chip(status: str) -> str:
     return chip(label, tone, dot=True)
 
 
+def use_example(example: str) -> None:
+    st.session_state["agent_objective"] = example
+
+
 def start_form() -> None:
     try:
         health = client.get("/health")
@@ -99,10 +105,20 @@ def start_form() -> None:
     )
     with st.expander("Examples"):
         for i, example in enumerate(EXAMPLE_OBJECTIVES):
-            if st.button(example, key=f"agent_example_{i}", type="tertiary"):
-                st.session_state["agent_objective"] = example
-                st.rerun()
-    if st.button("Start research", type="primary", icon=":material/travel_explore:"):
+            # A callback runs before the text area is created, so it may set its value.
+            st.button(
+                example,
+                key=f"agent_example_{i}",
+                type="tertiary",
+                on_click=use_example,
+                args=(example,),
+            )
+    remaining = credits_left("agent_run")
+    if remaining == 0:
+        out_of_credits_notice("agent_run")
+        return
+    label = "Start research" + (f" ({remaining} free left)" if remaining is not None else "")
+    if st.button(label, type="primary", icon=":material/travel_explore:"):
         if len(objective.strip()) < 3:
             st.warning("Describe what the agent should research.")
             return

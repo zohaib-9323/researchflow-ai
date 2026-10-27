@@ -42,6 +42,10 @@ FastAPI · Streamlit · SQLite**.
   comparison, a safe calculator, report creation), re-plans when evidence is thin,
   verifies every finding against its sources, and stops at hard limits. Runs are
   checkpointed and can be resumed after a crash or provider outage.
+- **Google sign-in with free credits**: visitors sign in with Google and get free
+  credits (2 questions and 2 deep research runs by default). Administrators are unlimited.
+  Each user sees only their own history, and only administrators can change the
+  document library.
 - **Document library** — PDF (PyMuPDF) and TXT ingestion with magic-byte validation, size
   limits, duplicate detection (SHA-256), collections, delete and index rebuild.
 - **Semantic search** — sentence-transformers `all-MiniLM-L6-v2` embeddings in a per-collection
@@ -242,7 +246,10 @@ All settings are environment variables (or `.env` / `.env.local`); see `.env.exa
 | `AGENT_MAX_TASK_RETRIES` / `AGENT_MAX_SECONDS` | Retries per task / time budget per run | `1` / `300` |
 | `AGENT_MAX_SOURCES` / `AGENT_TOOL_TIMEOUT_SECONDS` | Sources kept per run / per-tool timeout | `24` / `30` |
 | `WEB_SEARCH_PROVIDER` / `TAVILY_API_KEY` | `tavily` enables web search (key in `.env.local`) | `none` |
-| `APP_ACCESS_CODE` | Optional code required to open the UI (public deployments) | — |
+| `ADMIN_EMAILS` | Comma-separated Google emails with unlimited use and library access | — |
+| `FREE_QUESTIONS` / `FREE_AGENT_RUNS` | Free credits per signed-in user | `2` / `2` |
+| `AUTH_ENABLED` / `INTERNAL_API_TOKEN` | Enforce users and credits in the API (automatic on Streamlit Cloud) | `false` |
+| `APP_ACCESS_CODE` | Shared code to open the UI, used only when Google sign-in isn't configured | — |
 | `LANGSMITH_TRACING` | Optional LangSmith tracing | `false` |
 
 **About free-tier quotas:** Gemini free-tier limits apply per Google Cloud *project* and per
@@ -252,7 +259,7 @@ models add capacity too, because each model has its own quota.
 ## Testing & evaluation
 
 ```bash
-pytest                         # 172 offline tests — no API keys or network needed
+pytest                         # 186 offline tests — no API keys or network needed
 pytest -m live                 # real Gemini calls (uses quota)
 ruff check . && mypy app
 python -m app.evaluation.run               # retrieval hit@k and MRR
@@ -281,11 +288,31 @@ enabled.
    ```toml
    GOOGLE_API_KEY_1 = "..."
    GOOGLE_API_KEY_2 = "..."
-   APP_ACCESS_CODE = "choose-a-code"
+   ADMIN_EMAILS = "you@example.com"
+
+   [auth]
+   redirect_uri = "https://<your-app>.streamlit.app/oauth2callback"
+   cookie_secret = "<long random string>"
+
+   [auth.google]
+   client_id = "<...>.apps.googleusercontent.com"
+   client_secret = "<...>"
+   server_metadata_url = "https://accounts.google.com/.well-known/openid-configuration"
    ```
+   To get the Google client: Google Cloud Console → **APIs & Services → OAuth consent
+   screen** (External; publish it so any Google user can sign in) → **Credentials →
+   Create credentials → OAuth client ID → Web application**, with the authorized redirect
+   URI `https://<your-app>.streamlit.app/oauth2callback`. Without the `[auth]` section,
+   the app falls back to `APP_ACCESS_CODE` (a shared code) if set.
 4. Deploy. The app runs the API inside the Streamlit process, uses `fastembed` (ONNX) for
    embeddings, and loads the demo documents on first start (sample reports and 10 arXiv
    papers on RAG, retrieval and LLMs).
+
+**How credits are enforced.** Sign-in happens in Streamlit (`st.login`, Google OpenID
+Connect). The API trusts a user's email only on requests that carry `INTERNAL_API_TOKEN`,
+a secret shared with the UI (generated automatically when the API runs inside Streamlit).
+Credits are taken before a question or run starts and refunded if it fails. Resuming a
+run is free.
 
 ### Hugging Face Spaces / any Docker host
 
@@ -302,7 +329,10 @@ python -m app.scripts.rebuild_index            # all collections
 
 ## Limitations
 
-- No authentication or per-user isolation — everyone shares one workspace.
+- Signed-in users share one document library (read-only for non-admins). History and
+  research runs are private per user.
+- On Streamlit Community Cloud the SQLite database resets when the app restarts, which
+  also resets used credits. Point `DATABASE_URL` at a persistent database to keep them.
 - No OCR: scanned PDFs are rejected with a clear message.
 - Ingestion is synchronous (fine for small batches; large uploads block the request).
 - On free hosting, data resets on restart (demo documents reload automatically).
@@ -319,7 +349,7 @@ python -m app.scripts.rebuild_index            # all collections
 
 - Background ingestion queue with progress, and OCR for scanned PDFs.
 - Hybrid retrieval (BM25 + vectors) and a reranker.
-- User accounts and per-user collections.
+- Per-user document collections and paid plans with more credits.
 - Streaming answers for the Q&A mode (the research agent already shows live progress).
 - A job queue for research runs, and human approval in the UI for side-effecting tools.
 

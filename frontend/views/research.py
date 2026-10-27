@@ -9,9 +9,11 @@ from ui_common import (
     STAGES,
     STATUS_INFO,
     ApiError,
+    can_manage_documents,
     chip,
     cite_links,
     collection_selector,
+    credits_left,
     esc,
     examples_for,
     file_badge,
@@ -19,6 +21,7 @@ from ui_common import (
     hero,
     html_block,
     load_sample_documents,
+    out_of_credits_notice,
     plural,
     section,
     setup_page,
@@ -346,7 +349,7 @@ def render_welcome() -> None:
                 example + ("  (not in the documents: tests honesty)" if honesty_test else ""),
                 key=f"example_{number}",
                 icon=":material/shield:" if honesty_test else ":material/arrow_outward:",
-                disabled=not llm_ready,
+                disabled=not llm_ready or credits_left("question") == 0,
             ):
                 state["pending_question"] = example
                 st.rerun()
@@ -380,7 +383,7 @@ elif doc_count == 0:
             "fictional town — and try the example questions.</p></div>"
         )
         first, second = st.columns(2)
-        if first.button(
+        if can_manage_documents() and first.button(
             "Load sample documents",
             type="primary",
             icon=":material/auto_stories:",
@@ -407,7 +410,14 @@ elif conversation is not None:
     placeholder = "Ask a follow-up question…"
 else:
     placeholder = f"Ask anything about {collection['name'] if collection else 'your documents'}…"
-typed = st.chat_input(placeholder, disabled=not llm_ready or empty, max_chars=2000)
+remaining = credits_left("question")
+if remaining == 0:
+    out_of_credits_notice("question")
+elif remaining is not None:
+    st.caption(f"{plural(remaining, 'free question')} left.")
+typed = st.chat_input(
+    placeholder, disabled=not llm_ready or empty or remaining == 0, max_chars=2000
+)
 question = typed or state.pop("pending_question", None)
 if question:
     ask(question, turn_count + 1)

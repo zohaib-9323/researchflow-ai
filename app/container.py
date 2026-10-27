@@ -34,6 +34,7 @@ from app.services.document_service import DocumentService
 from app.services.report_service import ReportService
 from app.services.research_service import ResearchService
 from app.services.retrieval_service import RetrievalService
+from app.services.user_service import UserService
 
 
 class LazyEmbeddings(Embeddings):
@@ -79,6 +80,7 @@ class Container:
     reports: ReportService
     embeddings: Embeddings
     agent: AgentService
+    users: UserService
 
 
 def build_container(
@@ -168,6 +170,7 @@ def build_container(
         research=ResearchService(settings, database, graph, research_llm),
         reports=ReportService(database, research_llm),
         embeddings=embedder,
+        users=UserService(settings, database),
         agent=AgentService(
             settings,
             database,

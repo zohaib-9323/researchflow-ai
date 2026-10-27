@@ -6,18 +6,21 @@ import os
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
+from typing import Any
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel
 
+from app.api.dependencies import current_user
 from app.api.routes import agent, conversations, documents, reports, research
 from app.config import Settings, get_settings
 from app.container import Container, LazyEmbeddings, build_container
 from app.core.exceptions import ResearchFlowError
 from app.core.logging import configure_logging, get_logger, request_id_var
+from app.services.user_service import CurrentUser
 
 logger = get_logger(__name__)
 
@@ -144,9 +147,15 @@ def create_app(container: Container | None = None, settings: Settings | None = N
         ok = embedder.available() if isinstance(embedder, LazyEmbeddings) else True
         return {"available": ok, "provider": built.settings.embedding_provider}
 
-    app.include_router(documents.router)
-    app.include_router(research.router)
-    app.include_router(conversations.router)
-    app.include_router(reports.router)
-    app.include_router(agent.router)
+    @app.get("/me", tags=["users"])
+    def me(request: Request, user: CurrentUser | None = Depends(current_user)) -> dict[str, Any]:
+        """The signed-in user and their remaining free credits."""
+        built: Container = request.app.state.container
+        return built.users.status(user)
+
+    # With sign-in enabled, every data endpoint requires the UI's token and a user.
+    protected = [Depends(current_user)]
+    for router in (documents.router, research.router, conversations.router, reports.router):
+        app.include_router(router, dependencies=protected)
+    app.include_router(agent.router, dependencies=protected)
     return app

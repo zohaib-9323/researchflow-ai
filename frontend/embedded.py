@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import os
+import secrets
 import sys
 import threading
 import time
@@ -36,6 +37,19 @@ def export_secrets() -> None:
     for key, value in items.items():
         if isinstance(value, str | int | float | bool):
             os.environ.setdefault(key, str(value))
+
+
+def configure_auth(sign_in: bool) -> None:
+    """With Google sign-in, turn on per-user credits in the embedded API.
+
+    The API trusts the signed-in email only from requests carrying INTERNAL_API_TOKEN.
+    The API is private to this process, so a random token is generated when none is set.
+    Must run before ensure_backend() starts the API.
+    """
+    if not sign_in:
+        return
+    os.environ.setdefault("AUTH_ENABLED", "true")
+    os.environ.setdefault("INTERNAL_API_TOKEN", secrets.token_urlsafe(32))
 
 
 def enabled() -> bool:

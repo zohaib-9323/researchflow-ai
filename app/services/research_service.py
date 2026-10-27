@@ -74,7 +74,9 @@ class ResearchService:
         self.graph = graph
         self.llm = llm
 
-    def _resolve_conversation(self, request: ResearchRequest) -> Conversation:
+    def _resolve_conversation(
+        self, request: ResearchRequest, owner_email: str | None = None
+    ) -> Conversation:
         with self.database.session() as session:
             collections = CollectionRepository(session)
             conversations = ConversationRepository(session)
@@ -94,16 +96,16 @@ class ResearchService:
                     raise NotFoundError("Collection not found.")
             else:
                 collection = collections.get_or_create_default()
-            return conversations.create(collection.id, request.question[:120])
+            return conversations.create(collection.id, request.question[:120], owner_email)
 
-    def ask(self, request: ResearchRequest) -> ResearchResponse:
+    def ask(self, request: ResearchRequest, owner_email: str | None = None) -> ResearchResponse:
         if not self.llm.configured:
             raise LLMNotConfiguredError()
         if len(request.question) > self.settings.max_question_chars:
             raise ValidationFailedError(
                 f"Questions are limited to {self.settings.max_question_chars} characters."
             )
-        conversation = self._resolve_conversation(request)
+        conversation = self._resolve_conversation(request, owner_email)
         token = conversation_id_var.set(conversation.id)
         models_used: list[str] = []
         models_token = models_used_var.set(models_used)
@@ -159,7 +161,21 @@ class ResearchService:
         return response
 
     # -- conversations ---------------------------------------------------------------------
-    def list_conversations(self) -> list[ConversationSummary]:
+    def owner_of(self, conversation_id: str) -> str | None:
+        with self.database.session() as session:
+            conversation = ConversationRepository(session).get(conversation_id)
+            if conversation is None:
+                raise NotFoundError("Conversation not found.")
+            return conversation.owner_email
+
+    def turn_owner(self, turn_id: str) -> str | None:
+        with self.database.session() as session:
+            turn = ConversationRepository(session).get_turn(turn_id)
+            if turn is None:
+                raise NotFoundError("Research turn not found.")
+            return turn.conversation.owner_email
+
+    def list_conversations(self, owner_email: str | None = None) -> list[ConversationSummary]:
         with self.database.session() as session:
             repo = ConversationRepository(session)
             return [
@@ -171,7 +187,7 @@ class ResearchService:
                     created_at=c.created_at,
                     updated_at=c.updated_at,
                 )
-                for c in repo.list()
+                for c in repo.list(owner_email=owner_email)
             ]
 
     def get_conversation(self, conversation_id: str) -> ConversationDetail:

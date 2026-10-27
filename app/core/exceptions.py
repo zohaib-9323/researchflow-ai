@@ -99,3 +99,21 @@ class InvalidModelOutputError(ProviderError):
     code = "invalid_model_output"
     status_code = 502
     default_message = "The language model returned output that could not be validated."
+
+
+class AuthenticationRequiredError(ResearchFlowError):
+    code = "authentication_required"
+    status_code = 401
+    default_message = "Sign in to use ResearchFlow AI."
+
+
+class ForbiddenError(ResearchFlowError):
+    code = "forbidden"
+    status_code = 403
+    default_message = "You don't have permission to do that."
+
+
+class CreditsExhaustedError(ResearchFlowError):
+    code = "credits_exhausted"
+    status_code = 429
+    default_message = "You have used all your free credits for this feature."

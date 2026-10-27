@@ -105,6 +105,16 @@ class Settings(BaseSettings):
     tavily_api_key: SecretStr | None = None
     web_search_max_results: int = Field(default=5, ge=1, le=10)
 
+    # --- Users and free credits ----------------------------------------------------------
+    # When enabled (public deployments with Google sign-in), every API request must carry
+    # the internal token shared with the UI plus the signed-in user's email; free users
+    # get a fixed number of questions and research runs, admins are unlimited.
+    auth_enabled: bool = False
+    internal_api_token: SecretStr | None = None
+    admin_emails: str = ""
+    free_questions: int = Field(default=2, ge=0, le=1000)
+    free_agent_runs: int = Field(default=2, ge=0, le=1000)
+
     # --- API / UI -------------------------------------------------------------------------
     cors_origins: str = "http://localhost:8501"
     api_base_url: str = "http://localhost:8000"
@@ -127,6 +137,8 @@ class Settings(BaseSettings):
     def _derive_paths(self) -> Settings:
         if self.chunk_overlap >= self.chunk_size:
             raise ValueError("CHUNK_OVERLAP must be smaller than CHUNK_SIZE")
+        if self.auth_enabled and self.internal_api_token is None:
+            raise ValueError("AUTH_ENABLED requires INTERNAL_API_TOKEN")
         data = self.data_dir
         if self.database_url is None:
             self.database_url = f"sqlite:///{data / 'researchflow.db'}"
@@ -172,6 +184,10 @@ class Settings(BaseSettings):
     @property
     def llm_configured(self) -> bool:
         return bool(self.api_keys)
+
+    @property
+    def admin_email_set(self) -> set[str]:
+        return {e.strip().lower() for e in self.admin_emails.split(",") if e.strip()}
 
     @property
     def max_upload_bytes(self) -> int:

@@ -78,7 +78,9 @@ class AgentService:
             max_sources=s.agent_max_sources,
         )
 
-    def start(self, objective: str, collection_id: str | None = None) -> RunDetail:
+    def start(
+        self, objective: str, collection_id: str | None = None, owner_email: str | None = None
+    ) -> RunDetail:
         if not self.llm_configured:
             raise LLMNotConfiguredError()
         objective = " ".join(objective.split())
@@ -89,7 +91,12 @@ class AgentService:
             collection = repo.get(collection_id) if collection_id else repo.get_or_create_default()
             if collection is None:
                 raise NotFoundError("Collection not found.")
-            run = ResearchRun(collection_id=collection.id, objective=objective, status="queued")
+            run = ResearchRun(
+                collection_id=collection.id,
+                objective=objective,
+                status="queued",
+                owner_email=owner_email,
+            )
             session.add(run)
             session.flush()
             run_id = run.id
@@ -127,11 +134,12 @@ class AgentService:
             self._launch(run_id, state)
         return self.get(run_id)
 
-    def list(self, limit: int = 50) -> list[RunSummary]:
+    def list(self, limit: int = 50, owner_email: str | None = None) -> list[RunSummary]:
+        query = select(ResearchRun)
+        if owner_email is not None:
+            query = query.where(ResearchRun.owner_email == owner_email)
         with self.database.session() as session:
-            runs = session.scalars(
-                select(ResearchRun).order_by(ResearchRun.created_at.desc()).limit(limit)
-            ).all()
+            runs = session.scalars(query.order_by(ResearchRun.created_at.desc()).limit(limit)).all()
             reports = set(
                 session.scalars(
                     select(AgentReport.run_id).where(AgentReport.run_id.in_([r.id for r in runs]))
@@ -288,6 +296,7 @@ class AgentService:
             id=run.id,
             collection_id=run.collection_id,
             objective=run.objective,
+            owner_email=run.owner_email,
             status=status,
             resumable=status in RESUMABLE and self._resumable(run.id),
             has_report=has_report,

@@ -9,11 +9,14 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import sys
 import time
 from pathlib import Path
 
 import httpx
+
+from app.services.user_service import SYSTEM_EMAIL
 
 SAMPLE_DOCS_DIR = Path(__file__).resolve().parents[2] / "evaluation" / "docs"
 PAPERS_COLLECTION = "AI research papers"
@@ -98,7 +101,11 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(name)s: %(message)s")
 
-    with httpx.Client(base_url=args.api, timeout=600) as client:
+    # With sign-in enabled, uploads need the internal token and an admin identity.
+    headers = {"X-User-Email": SYSTEM_EMAIL}
+    if token := os.environ.get("INTERNAL_API_TOKEN"):
+        headers["X-Internal-Token"] = token
+    with httpx.Client(base_url=args.api, timeout=600, headers=headers) as client:
         wait_for_api(client, args.wait)
         collections = client.get("/collections").json()
         seed_samples(client, collections)

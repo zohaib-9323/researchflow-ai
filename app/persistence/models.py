@@ -83,6 +83,8 @@ class Conversation(Base):
     id: Mapped[str] = mapped_column(String(64), primary_key=True, default=new_id)
     collection_id: Mapped[str] = mapped_column(ForeignKey("collections.id"), index=True)
     title: Mapped[str] = mapped_column(String(300))
+    # Signed-in user who started it (None when sign-in is disabled).
+    owner_email: Mapped[str | None] = mapped_column(String(320), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
@@ -132,6 +134,7 @@ class ResearchRun(Base):
     id: Mapped[str] = mapped_column(String(64), primary_key=True, default=new_id)
     collection_id: Mapped[str] = mapped_column(ForeignKey("collections.id"), index=True)
     objective: Mapped[str] = mapped_column(Text)
+    owner_email: Mapped[str | None] = mapped_column(String(320), index=True)
     # queued | running | completed | partial | insufficient_evidence | limit_reached
     # | interrupted | error
     status: Mapped[str] = mapped_column(String(32), default="queued", index=True)
@@ -151,3 +154,16 @@ class AgentReport(Base):
     content: Mapped[dict[str, Any]] = mapped_column(JSON)
     markdown: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class UserAccount(Base):
+    """A signed-in user and the free credits they have used."""
+
+    __tablename__ = "user_accounts"
+
+    email: Mapped[str] = mapped_column(String(320), primary_key=True)
+    name: Mapped[str | None] = mapped_column(String(200))
+    questions_used: Mapped[int] = mapped_column(Integer, default=0)
+    agent_runs_used: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

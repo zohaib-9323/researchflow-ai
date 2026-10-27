@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, File, Form, Query, Response, UploadFile, status
 
-from app.api.dependencies import get_container
+from app.api.dependencies import current_user, get_container
 from app.container import Container
 from app.core.exceptions import FileTooLargeError, ValidationFailedError
 from app.persistence.models import Document
@@ -14,6 +14,7 @@ from app.schemas.documents import (
     UploadResponse,
     UploadResult,
 )
+from app.services.user_service import CurrentUser, UserService
 
 router = APIRouter(tags=["documents"])
 
@@ -39,8 +40,11 @@ def list_collections(container: Container = Depends(get_container)) -> list[Coll
 
 @router.post("/collections", response_model=CollectionOut, status_code=status.HTTP_201_CREATED)
 def create_collection(
-    body: CollectionCreate, container: Container = Depends(get_container)
+    body: CollectionCreate,
+    container: Container = Depends(get_container),
+    user: CurrentUser | None = Depends(current_user),
 ) -> CollectionOut:
+    UserService.require_admin(user)
     name = body.name.strip()
     if not name or len(name) > 200:
         raise ValidationFailedError("Collection names must be 1-200 characters.")
@@ -62,8 +66,10 @@ async def upload_documents(
     files: list[UploadFile] = File(..., description="PDF or TXT files"),
     collection_id: str | None = Form(default=None),
     container: Container = Depends(get_container),
+    user: CurrentUser | None = Depends(current_user),
 ) -> UploadResponse:
     """Upload and synchronously ingest files. Each file gets its own result entry."""
+    UserService.require_admin(user)
     settings = container.settings
     if len(files) > settings.max_files_per_upload:
         raise ValidationFailedError(
@@ -129,6 +135,11 @@ def get_document(document_id: str, container: Container = Depends(get_container)
 
 
 @router.delete("/documents/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_document(document_id: str, container: Container = Depends(get_container)) -> Response:
+def delete_document(
+    document_id: str,
+    container: Container = Depends(get_container),
+    user: CurrentUser | None = Depends(current_user),
+) -> Response:
+    UserService.require_admin(user)
     container.documents.delete_document(document_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)

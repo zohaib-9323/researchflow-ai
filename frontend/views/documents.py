@@ -4,6 +4,7 @@ import streamlit as st
 from ui_common import (
     DOC_STATUS,
     ApiError,
+    can_manage_documents,
     chip,
     collection_selector,
     esc,
@@ -22,6 +23,7 @@ from ui_common import (
 client = get_client()
 info = setup_page()
 state = st.session_state
+manage = can_manage_documents()  # signed-in non-admins get a read-only library
 
 hero(
     "Knowledge base",
@@ -33,20 +35,21 @@ hero(
 left, right = st.columns([4, 1], vertical_alignment="bottom")
 with left:
     collection = collection_selector("library_collection", preselect=state.get("collection_id"))
-with (
-    right,
-    st.popover("New collection", icon=":material/create_new_folder:", use_container_width=True),
-    st.form("new_collection", clear_on_submit=True, border=False),
-):
-    name = st.text_input("Name", max_chars=200, placeholder="e.g. Climate papers")
-    if st.form_submit_button("Create", type="primary") and name.strip():
-        try:
-            created = client.post("/collections", {"name": name.strip()})
-        except ApiError as exc:
-            st.error(exc.message)
-        else:
-            state["collection_id"] = created["id"]
-            st.rerun()
+if manage:
+    with (
+        right,
+        st.popover("New collection", icon=":material/create_new_folder:", use_container_width=True),
+        st.form("new_collection", clear_on_submit=True, border=False),
+    ):
+        name = st.text_input("Name", max_chars=200, placeholder="e.g. Climate papers")
+        if st.form_submit_button("Create", type="primary") and name.strip():
+            try:
+                created = client.post("/collections", {"name": name.strip()})
+            except ApiError as exc:
+                st.error(exc.message)
+            else:
+                state["collection_id"] = created["id"]
+                st.rerun()
 collection_id = collection["id"] if collection else None
 if collection_id:
     state["collection_id"] = collection_id
@@ -71,62 +74,69 @@ stat_cards(
 )
 
 # -- upload ----------------------------------------------------------------------------------
-section("Add documents", "PDF or TXT · up to 10 files at a time, 20 MB each")
-with st.container(key="upload"):
-    uploads = st.file_uploader(
-        "Drop PDF or TXT files here",
-        type=["pdf", "txt"],
-        accept_multiple_files=True,
-        label_visibility="collapsed",
-        help="Scanned PDFs need OCR first.",
-    )
-    go, sample = st.columns([1, 1])
-    start = go.button(
-        f"Add {plural(len(uploads), 'file')}" if uploads else "Add files",
-        type="primary",
-        icon=":material/upload:",
-        disabled=not uploads,
-        use_container_width=True,
-    )
-    if sample.button(
-        "Load sample documents",
-        icon=":material/auto_stories:",
-        use_container_width=True,
-        help="Three short fictional reports to try the assistant with.",
-    ):
-        load_sample_documents(collection_id)
-        st.rerun()
-
-if start and uploads:
-    files = [(f.name, f.getvalue(), f.type or "application/octet-stream") for f in uploads]
-    with st.status(f"Processing {plural(len(files), 'file')}…", expanded=True) as progress:
-        st.write(
-            "Checking files, extracting text, splitting into passages and indexing. "
-            "Large PDFs can take a minute."
+if manage:
+    section("Add documents", "PDF or TXT · up to 10 files at a time, 20 MB each")
+    with st.container(key="upload"):
+        uploads = st.file_uploader(
+            "Drop PDF or TXT files here",
+            type=["pdf", "txt"],
+            accept_multiple_files=True,
+            label_visibility="collapsed",
+            help="Scanned PDFs need OCR first.",
         )
-        try:
-            result = client.upload(files, collection_id)
-        except ApiError as exc:
-            progress.update(label="Upload failed", state="error")
-            st.error(exc.message)
-        else:
-            for item in result["results"]:
-                if item["ok"]:
-                    doc = item["document"]
-                    st.write(
-                        f"✅ **{item['filename']}** — ready "
-                        f"({plural(doc['chunk_count'], 'passage')})"
-                    )
-                elif item["error_code"] == "duplicate_document":
-                    st.write(f"↩️ **{item['filename']}** — already in this collection, skipped")
-                else:
-                    st.write(f"❌ **{item['filename']}** — {item['error_message']}")
-            progress.update(
-                label=f"{result['succeeded']} added, {result['failed']} not added",
-                state="complete" if result["failed"] == 0 else "error",
+        go, sample = st.columns([1, 1])
+        start = go.button(
+            f"Add {plural(len(uploads), 'file')}" if uploads else "Add files",
+            type="primary",
+            icon=":material/upload:",
+            disabled=not uploads,
+            use_container_width=True,
+        )
+        if sample.button(
+            "Load sample documents",
+            icon=":material/auto_stories:",
+            use_container_width=True,
+            help="Three short fictional reports to try the assistant with.",
+        ):
+            load_sample_documents(collection_id)
+            st.rerun()
+
+    if start and uploads:
+        files = [(f.name, f.getvalue(), f.type or "application/octet-stream") for f in uploads]
+        with st.status(f"Processing {plural(len(files), 'file')}…", expanded=True) as progress:
+            st.write(
+                "Checking files, extracting text, splitting into passages and indexing. "
+                "Large PDFs can take a minute."
             )
-            if result["succeeded"]:
-                st.button("Show the updated library", icon=":material/refresh:")
+            try:
+                result = client.upload(files, collection_id)
+            except ApiError as exc:
+                progress.update(label="Upload failed", state="error")
+                st.error(exc.message)
+            else:
+                for item in result["results"]:
+                    if item["ok"]:
+                        doc = item["document"]
+                        st.write(
+                            f"✅ **{item['filename']}** — ready "
+                            f"({plural(doc['chunk_count'], 'passage')})"
+                        )
+                    elif item["error_code"] == "duplicate_document":
+                        st.write(f"↩️ **{item['filename']}** — already in this collection, skipped")
+                    else:
+                        st.write(f"❌ **{item['filename']}** — {item['error_message']}")
+                progress.update(
+                    label=f"{result['succeeded']} added, {result['failed']} not added",
+                    state="complete" if result["failed"] == 0 else "error",
+                )
+                if result["succeeded"]:
+                    st.button("Show the updated library", icon=":material/refresh:")
+
+else:
+    st.info(
+        "The document library is read-only. Ask questions about the documents below.",
+        icon=":material/lock:",
+    )
 
 # -- library ---------------------------------------------------------------------------------
 head, action = st.columns([3, 1], vertical_alignment="bottom")
@@ -174,37 +184,38 @@ for doc in documents:
                 f"<small>{'passage' if doc['chunk_count'] == 1 else 'passages'}</small></div>",
                 unsafe_allow_html=True,
             )
-        confirm_key = f"confirm_delete_{doc['id']}"
-        if state.get(confirm_key):
-            yes, no = action_col.columns(2)
-            if yes.button(
-                "",
-                key=f"yes_{doc['id']}",
-                type="primary",
-                icon=":material/delete:",
-                help="Permanently remove this document and its passages",
-            ):
-                try:
-                    client.delete(f"/documents/{doc['id']}")
-                except ApiError as exc:
-                    st.error(exc.message)
-                else:
+        if manage:
+            confirm_key = f"confirm_delete_{doc['id']}"
+            if state.get(confirm_key):
+                yes, no = action_col.columns(2)
+                if yes.button(
+                    "",
+                    key=f"yes_{doc['id']}",
+                    type="primary",
+                    icon=":material/delete:",
+                    help="Permanently remove this document and its passages",
+                ):
+                    try:
+                        client.delete(f"/documents/{doc['id']}")
+                    except ApiError as exc:
+                        st.error(exc.message)
+                    else:
+                        state.pop(confirm_key, None)
+                        st.toast(f"Removed {doc['filename']}", icon="🗑️")
+                        st.rerun()
+                if no.button("", key=f"no_{doc['id']}", icon=":material/close:", help="Keep it"):
                     state.pop(confirm_key, None)
-                    st.toast(f"Removed {doc['filename']}", icon="🗑️")
                     st.rerun()
-            if no.button("", key=f"no_{doc['id']}", icon=":material/close:", help="Keep it"):
-                state.pop(confirm_key, None)
+            elif action_col.button(
+                "Remove", key=f"del_{doc['id']}", icon=":material/delete:", use_container_width=True
+            ):
+                state[confirm_key] = True
                 st.rerun()
-        elif action_col.button(
-            "Remove", key=f"del_{doc['id']}", icon=":material/delete:", use_container_width=True
-        ):
-            state[confirm_key] = True
-            st.rerun()
-        if state.get(confirm_key):
-            st.warning(
-                f"Remove **{doc['filename']}**? It will no longer be searchable. "
-                "Past answers keep their quotes. Confirm with the red button."
-            )
+            if state.get(confirm_key):
+                st.warning(
+                    f"Remove **{doc['filename']}**? It will no longer be searchable. "
+                    "Past answers keep their quotes. Confirm with the red button."
+                )
         if doc["status"] == "failed" and doc.get("error_message"):
             st.error(doc["error_message"])
 

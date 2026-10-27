@@ -144,13 +144,20 @@ class ConversationRepository:
     def get(self, conversation_id: str) -> Conversation | None:
         return self.session.get(Conversation, conversation_id)
 
-    def list(self, limit: int = 100) -> Sequence[Conversation]:
+    def list(self, limit: int = 100, owner_email: str | None = None) -> Sequence[Conversation]:
+        query = select(Conversation)
+        if owner_email is not None:
+            query = query.where(Conversation.owner_email == owner_email)
         return self.session.scalars(
-            select(Conversation).order_by(Conversation.updated_at.desc()).limit(limit)
+            query.order_by(Conversation.updated_at.desc()).limit(limit)
         ).all()
 
-    def create(self, collection_id: str, title: str) -> Conversation:
-        conversation = Conversation(collection_id=collection_id, title=title[:300])
+    def create(
+        self, collection_id: str, title: str, owner_email: str | None = None
+    ) -> Conversation:
+        conversation = Conversation(
+            collection_id=collection_id, title=title[:300], owner_email=owner_email
+        )
         self.session.add(conversation)
         self.session.flush()
         return conversation

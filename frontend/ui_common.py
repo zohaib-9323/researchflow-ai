@@ -110,7 +110,11 @@ class ApiClient:
     def _request(self, method: str, path: str, **kwargs: Any) -> httpx.Response:
         try:
             response = httpx.request(
-                method, f"{self.base_url}{path}", timeout=self.timeout, **kwargs
+                method,
+                f"{self.base_url}{path}",
+                timeout=self.timeout,
+                headers=identity_headers(),
+                **kwargs,
             )
         except httpx.TimeoutException as exc:
             raise ApiError(
@@ -155,6 +159,62 @@ class ApiClient:
 @st.cache_resource
 def get_client() -> ApiClient:
     return ApiClient()
+
+
+# -- signed-in user ----------------------------------------------------------------------------
+def auth_configured() -> bool:
+    """Google sign-in is configured through an [auth] section in Streamlit secrets."""
+    try:
+        return "auth" in st.secrets
+    except Exception:  # no secrets file
+        return False
+
+
+def signed_in_user() -> dict[str, str] | None:
+    if not auth_configured() or not st.user.is_logged_in:
+        return None
+    email = str(st.user.get("email") or "").strip().lower()
+    return {"email": email, "name": str(st.user.get("name") or "")} if email else None
+
+
+def identity_headers() -> dict[str, str]:
+    """Who is asking, for the API: the shared internal token plus the verified email.
+    Computed per request because the API client is shared by all sessions."""
+    headers: dict[str, str] = {}
+    token = os.environ.get("INTERNAL_API_TOKEN")
+    if token:
+        headers["X-Internal-Token"] = token
+    user = signed_in_user()
+    if user:
+        headers["X-User-Email"] = user["email"]
+        # HTTP headers are latin-1; drop characters that can't be sent.
+        headers["X-User-Name"] = user["name"].encode("latin-1", "ignore").decode()[:200]
+    return headers
+
+
+def account() -> dict[str, Any]:
+    """The /me response for this rerun (credits, admin flag); unlimited when sign-in is
+    off or the backend is unreachable."""
+    return st.session_state.get("_account") or {"auth_enabled": False, "is_admin": True}
+
+
+def credits_left(kind: str) -> int | None:
+    """Remaining free credits ('question' or 'agent_run'); None means unlimited."""
+    credits = account().get("credits")
+    return None if not credits else credits[kind]["remaining"]
+
+
+def can_manage_documents() -> bool:
+    return bool(account().get("is_admin", True))
+
+
+def out_of_credits_notice(kind: str) -> None:
+    label = "questions" if kind == "question" else "deep research runs"
+    st.info(
+        f"You've used all your free {label}. Thanks for trying ResearchFlow AI! "
+        "Contact the administrator for more access.",
+        icon=":material/hourglass_empty:",
+    )
 
 
 # -- tiny HTML components ----------------------------------------------------------------------
@@ -215,6 +275,10 @@ def setup_page() -> dict[str, Any] | None:
         info = get_client().get("/health")
     except ApiError:
         info = None
+    try:
+        st.session_state["_account"] = get_client().get("/me") if info else None
+    except ApiError:
+        st.session_state["_account"] = None
     with st.sidebar:
         html_block(
             f'<div class="rf-brand"><div class="rf-logo">{LOGO_SVG}</div><div>'
@@ -226,6 +290,11 @@ def setup_page() -> dict[str, Any] | None:
         st.page_link("views/agent.py", label="Deep research", icon=":material/travel_explore:")
         st.page_link("views/documents.py", label="Document library", icon=":material/folder_open:")
         st.page_link("views/history.py", label="Past research", icon=":material/history:")
+        user = signed_in_user()
+        if user:
+            st.write("")
+            html_block('<div class="rf-side-label">Account</div>')
+            _account_box(user)
         st.write("")
         html_block('<div class="rf-side-label">Status</div>')
         if info is None:
@@ -257,6 +326,27 @@ def setup_page() -> dict[str, Any] | None:
             "Answers cite only your documents.</div>"
         )
     return info
+
+
+def _account_box(user: dict[str, str]) -> None:
+    me = account()
+    if me.get("is_admin"):
+        detail = "Administrator · unlimited"
+    elif me.get("credits"):
+        q, a = me["credits"]["question"], me["credits"]["agent_run"]
+        detail = (
+            f"Questions: {q['remaining']} of {q['limit']} left<br>"
+            f"Deep research: {a['remaining']} of {a['limit']} left"
+        )
+    else:
+        detail = ""
+    html_block(
+        f'<div class="rf-status"><div class="rf-status-top">{esc(user["name"] or user["email"])}'
+        f'</div><div class="rf-status-sub" style="padding-left:0">{esc(user["email"])}<br>'
+        f"{detail}</div></div>"
+    )
+    if st.button("Sign out", icon=":material/logout:", key="sign_out", type="tertiary"):
+        st.logout()
 
 
 def _status(tone: str, title: str, subtitle: str) -> None:
