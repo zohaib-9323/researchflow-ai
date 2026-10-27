@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import re
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from contextvars import ContextVar
 from typing import Any, TypeVar
 
@@ -29,6 +29,7 @@ from langchain_core.exceptions import (
 )
 from langchain_core.language_models import BaseChatModel
 from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.tools import BaseTool
 from pydantic import BaseModel, ValidationError
 
 from app.config import Settings
@@ -46,6 +47,7 @@ from app.llm.key_pool import (
 logger = get_logger(__name__)
 
 SchemaT = TypeVar("SchemaT", bound=BaseModel)
+ResultT = TypeVar("ResultT")
 ModelFactory = Callable[[str, str], BaseChatModel]  # (api_key, model) -> chat model
 
 # Collects the models that produced each structured result during one request, so the
@@ -166,6 +168,35 @@ class LLMGateway:
             if (used := models_used_var.get()) is not None:
                 used.append(entry.model)
             return validated
+
+        return self._call(operation, task)
+
+    def tool_calls(
+        self,
+        prompt: ChatPromptTemplate,
+        tools: Sequence[BaseTool],
+        inputs: dict[str, Any],
+        *,
+        task: str,
+    ) -> list[dict[str, Any]]:
+        """Invoke `prompt | model.bind_tools(tools)`; returns the requested tool calls
+        (each ``{"name", "args", "id"}``). The tools are only *described* to the model
+        here — execution happens in the agent's ToolExecutor after validation."""
+
+        def operation(entry: PoolEntry) -> list[dict[str, Any]]:
+            chain = prompt | self._model(entry).bind_tools(list(tools))
+            message = chain.invoke(inputs, config={"run_name": task, "tags": [task]})
+            calls = getattr(message, "tool_calls", None)
+            if calls is None:
+                raise _InvalidOutputError(task)
+            if (used := models_used_var.get()) is not None:
+                used.append(entry.model)
+            return [dict(call) for call in calls]
+
+        return self._call(operation, task)
+
+    def _call(self, operation: Callable[[PoolEntry], ResultT], task: str) -> ResultT:
+        """Run one model operation through the key pool, mapping provider errors."""
 
         def classify(exc: BaseException) -> KeyFailure | None:
             failure = classify_provider_error(exc, self.settings)

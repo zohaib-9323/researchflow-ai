@@ -52,6 +52,7 @@ if ACCESS_CODE and not st.session_state.get("access_granted"):
 # The sidebar renders its own branded navigation (see ui_common.setup_page).
 pages = [
     st.Page("views/research.py", title="Ask your documents", icon="🔎", default=True),
+    st.Page("views/agent.py", title="Deep research", icon="🧭"),
     st.Page("views/documents.py", title="Document library", icon="📚"),
     st.Page("views/history.py", title="Past research", icon="🕘"),
 ]

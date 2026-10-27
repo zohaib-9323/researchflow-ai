@@ -13,6 +13,11 @@ from langchain_core.embeddings import Embeddings
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph.state import CompiledStateGraph
 
+from app.agent.llm import AgentLLM, GeminiAgentLLM
+from app.agent.nodes import AgentDependencies
+from app.agent.service import AgentService
+from app.agent.tools import TavilySearch, ToolExecutor, WebSearchProvider
+from app.agent.workflow import build_agent_graph
 from app.config import Settings
 from app.core.exceptions import EmbeddingUnavailableError
 from app.graph.nodes import GraphDependencies
@@ -24,7 +29,7 @@ from app.llm.models import LLMGateway
 from app.llm.research_llm import GeminiResearchLLM, ResearchLLM
 from app.persistence.checkpointer import create_sqlite_checkpointer
 from app.persistence.database import Database
-from app.persistence.repositories import CollectionRepository
+from app.persistence.repositories import CollectionRepository, DocumentRepository
 from app.services.document_service import DocumentService
 from app.services.report_service import ReportService
 from app.services.research_service import ResearchService
@@ -73,6 +78,7 @@ class Container:
     research: ResearchService
     reports: ReportService
     embeddings: Embeddings
+    agent: AgentService
 
 
 def build_container(
@@ -81,6 +87,9 @@ def build_container(
     llm: ResearchLLM | None = None,
     embeddings: Embeddings | None = None,
     checkpointer: BaseCheckpointSaver | None = None,
+    agent_llm: AgentLLM | None = None,
+    web_search: WebSearchProvider | None = None,
+    agent_background: bool = True,
 ) -> Container:
     settings.ensure_directories()
     database = Database(settings.database_url_value)
@@ -94,7 +103,14 @@ def build_container(
         state_path=settings.key_pool_state_path,
         max_wait_seconds=settings.llm_max_wait_seconds,
     )
-    research_llm = llm or GeminiResearchLLM(LLMGateway(settings, key_pool))
+    gateway = LLMGateway(settings, key_pool)
+    research_llm = llm or GeminiResearchLLM(gateway)
+    research_agent_llm = agent_llm or GeminiAgentLLM(gateway, settings.agent_max_context_chars)
+    if web_search is None and settings.web_search_configured and settings.tavily_api_key:
+        web_search = TavilySearch(
+            settings.tavily_api_key.get_secret_value(),
+            timeout=settings.agent_tool_timeout_seconds,
+        )
 
     embedder = embeddings or LazyEmbeddings(settings)
     index = FaissIndexManager(settings.vector_store_path, embedder, embedding_model_id(settings))
@@ -107,6 +123,27 @@ def build_container(
         with database.session() as session:
             return CollectionRepository(session).indexed_document_count(collection_id)
 
+    def document_info(document_id: str) -> dict | None:
+        with database.session() as session:
+            doc = DocumentRepository(session).get(document_id)
+            if doc is None:
+                return None
+            return {"filename": doc.filename, "pages": doc.page_count, "chunks": doc.chunk_count}
+
+    saver = checkpointer or create_sqlite_checkpointer(settings.checkpoint_path)
+    agent_graph = build_agent_graph(
+        AgentDependencies(
+            llm=research_agent_llm,
+            retrieve=lambda cid, query, k: retrieval.retrieve(cid, query, k),
+            indexed_document_count=indexed_count,
+            executor=ToolExecutor(settings.agent_tool_timeout_seconds),
+            web_search=web_search,
+            document_info=document_info,
+            max_context_chars=settings.agent_max_context_chars,
+            search_k=settings.retrieval_top_k,
+        ),
+        checkpointer=saver,
+    )
     graph = build_research_graph(
         GraphDependencies(
             llm=research_llm,
@@ -117,7 +154,7 @@ def build_container(
             max_question_chars=settings.max_question_chars,
             max_history_turns=settings.max_history_turns,
         ),
-        checkpointer=checkpointer or create_sqlite_checkpointer(settings.checkpoint_path),
+        checkpointer=saver,
     )
     return Container(
         settings=settings,
@@ -131,4 +168,12 @@ def build_container(
         research=ResearchService(settings, database, graph, research_llm),
         reports=ReportService(database, research_llm),
         embeddings=embedder,
+        agent=AgentService(
+            settings,
+            database,
+            agent_graph,
+            llm_configured=agent_llm is not None or settings.llm_configured,
+            web_available=web_search is not None,
+            background=agent_background,
+        ),
     )

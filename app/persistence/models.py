@@ -122,3 +122,32 @@ class Report(Base):
     content: Mapped[dict[str, Any]] = mapped_column(JSON)
     markdown: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class ResearchRun(Base):
+    """One research-agent run. `id` is also the LangGraph thread id (prefixed)."""
+
+    __tablename__ = "research_runs"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True, default=new_id)
+    collection_id: Mapped[str] = mapped_column(ForeignKey("collections.id"), index=True)
+    objective: Mapped[str] = mapped_column(Text)
+    # queued | running | completed | partial | insufficient_evidence | limit_reached
+    # | interrupted | error
+    status: Mapped[str] = mapped_column(String(32), default="queued", index=True)
+    # Latest progress snapshot (tasks, events, tool calls, source metadata) for the UI.
+    snapshot: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    error: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class AgentReport(Base):
+    __tablename__ = "agent_reports"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True, default=new_id)
+    run_id: Mapped[str] = mapped_column(ForeignKey("research_runs.id"), unique=True)
+    title: Mapped[str] = mapped_column(String(300))
+    content: Mapped[dict[str, Any]] = mapped_column(JSON)
+    markdown: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

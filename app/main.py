@@ -13,7 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel
 
-from app.api.routes import conversations, documents, reports, research
+from app.api.routes import agent, conversations, documents, reports, research
 from app.config import Settings, get_settings
 from app.container import Container, LazyEmbeddings, build_container
 from app.core.exceptions import ResearchFlowError
@@ -49,6 +49,7 @@ class HealthResponse(BaseModel):
     embedding_provider: str
     embedding_model: str
     max_retries: int
+    web_search_configured: bool
 
 
 def create_app(container: Container | None = None, settings: Settings | None = None) -> FastAPI:
@@ -133,6 +134,7 @@ def create_app(container: Container | None = None, settings: Settings | None = N
             if cfg.embedding_provider == "huggingface"
             else "hashing (development only)",
             max_retries=cfg.max_retries,
+            web_search_configured=built.agent.web_available,
         )
 
     @app.get("/health/embeddings", tags=["health"])
@@ -146,4 +148,5 @@ def create_app(container: Container | None = None, settings: Settings | None = N
     app.include_router(research.router)
     app.include_router(conversations.router)
     app.include_router(reports.router)
+    app.include_router(agent.router)
     return app

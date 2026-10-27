@@ -4,6 +4,12 @@
 for every claim, an agent that fact-checks its own draft, and the honesty to say "the
 documents don't say".**
 
+It has two modes:
+
+- **Ask your documents**: grounded Q&A with a self-checking agent.
+- **Deep research**: an autonomous research agent that plans tasks, chooses tools, checks
+  its evidence and writes a cited report you can download as Markdown.
+
 Upload PDFs or text files, ask a question in plain language, and get an answer where each
 statement links to the exact document, page and quote it came from. If the evidence is weak
 the agent searches again (up to a fixed retry budget); if the documents don't contain the
@@ -31,6 +37,11 @@ FastAPI · Streamlit · SQLite**.
   agent can't loop forever; the best supported attempt is returned as a *partial* answer.
 - **Honest failure modes** — `answered`, `partial`, `insufficient_evidence`,
   `not_applicable`, `error`; nothing is shown as an answer when the model fails.
+- **Autonomous research agent (Deep research)**: plans structured tasks, lets the model
+  choose real LangChain tools (document search, web search, source inspection,
+  comparison, a safe calculator, report creation), re-plans when evidence is thin,
+  verifies every finding against its sources, and stops at hard limits. Runs are
+  checkpointed and can be resumed after a crash or provider outage.
 - **Document library** — PDF (PyMuPDF) and TXT ingestion with magic-byte validation, size
   limits, duplicate detection (SHA-256), collections, delete and index rebuild.
 - **Semantic search** — sentence-transformers `all-MiniLM-L6-v2` embeddings in a per-collection
@@ -84,12 +95,100 @@ flowchart TD
   counter, and per-conversation memory via the SQLite checkpointer.
 - Every node is wrapped so domain errors become an `error` state rather than a crash.
 
+### The deep-research agent (LangGraph)
+
+```mermaid
+flowchart TD
+    P[plan_research] -->|tasks| S[select_next_task]
+    P -->|invalid objective / no documents| F[finalize_research]
+    S -->|task picked| X[execute_research_tool]
+    S -->|no task left or limit reached| V[verify_evidence]
+    X --> E[evaluate_research_progress]
+    E -->|needs more evidence, retry left| R[revise_research_plan]
+    E -->|complete / insufficient| S
+    R --> S
+    V --> G[generate_report]
+    G --> F
+```
+
+**Planning.** A short single question skips the planner and becomes one search task (the
+lightweight path). Anything else is split by the model into at most `AGENT_MAX_TASKS`
+tasks. Each task has an id, a description, an approach (`document_search`, `web_search`,
+`comparison`, `calculation` or `mixed`), source requirements, a status
+(`pending → in_progress → completed | insufficient | skipped`), an attempt count and notes.
+
+**Tools.** Every tool is a LangChain `StructuredTool` with a Pydantic argument schema and
+runs a real application function:
+
+| Tool | What it does |
+|---|---|
+| `search_documents` | Vector search in the selected collection; registers passages as sources `D1, D2…` |
+| `search_web` | Tavily search, only when configured; sources `W1…` keep their real URLs |
+| `inspect_source` | Full text and metadata of a gathered source |
+| `compare_sources` | Model comparison of 2–8 gathered sources; points that cite other ids are dropped |
+| `calculate` | Arithmetic through an AST whitelist. It cannot run code. |
+| `create_research_report` | Writes the final report from verified findings |
+
+The model only sees the tools the current task's approach needs (`bind_tools`), and
+`search_web` is never offered when no provider is configured. The `ToolExecutor`
+validates arguments before running, time-boxes each call (`AGENT_TOOL_TIMEOUT_SECONDS`)
+and turns invalid input, empty results, timeouts and provider failures into recorded
+`ok=false` results that the agent can react to. If the model asks for no tool, the
+agent falls back to a document search.
+
+**Evidence and verification.** Source ids are assigned by the application, never by the
+model. Each source records its document/URL, page, chunk id, passage and provenance (which
+tool call and query found it). Findings must cite existing ids. `verify_evidence` checks
+each finding's lexical support in its cited passages and rejects unsupported ones.
+Disagreements found by `compare_sources` and tasks without evidence are reported as
+contradictory or missing evidence. Report items whose citations are all invalid are
+removed before the report is saved. If nothing can be verified, the agent writes an
+"insufficient evidence" report without calling the model.
+
+**Report.** Objective, executive summary, key findings, source-backed comparisons,
+contradictory or missing evidence, limitations, conclusion, research process and
+citations. It is stored in SQLite (`agent_reports`), shown in the UI and downloadable as
+Markdown.
+
+**Limits and termination.** Tasks, attempts per task, total tool calls, tool calls per
+step, gathered sources and wall time are all capped in configuration and enforced in
+routing and the executor, never in prompts. Every path ends in
+`verify_evidence → generate_report → finalize_research`, and the recursion limit is
+derived from the limits as a final safety net. Run statuses: `completed`, `partial`,
+`insufficient_evidence`, `limit_reached`, `error`, `interrupted`.
+
+**Checkpoints and resume.** Each run is its own LangGraph thread (`agent-<run id>`) in the
+SQLite checkpointer. A provider failure stops the run at the failed step. Runs left
+`running` by a restart are detected as `interrupted`. Both can be resumed from the last
+completed step (`POST /agent/runs/{id}/resume`).
+
+**Safety.** Uploaded documents and web pages are untrusted: they reach the model only
+inside `<sources>`/`<tool_result>` tags, with rules to ignore instructions inside them.
+There are no shell, file-system or write tools. A `REQUIRES_APPROVAL` list in
+`app/agent/tools.py` makes the executor refuse any future side-effecting tool unless a
+human approves it. Logs record tool names, counts and durations, never keys, prompts or
+document text. Progress snapshots keep only 300-character excerpts.
+
+**Live progress.** The service stores a snapshot after every graph step. The Deep
+research page polls `GET /agent/runs/{id}` every 2 s and shows the current task, task
+statuses, tool calls with result counts, evaluation outcomes, retries and report status.
+It shows only real state: no simulated progress and no hidden reasoning.
+
+| Endpoint | Purpose |
+|---|---|
+| `POST /agent/runs` | Start a run (`objective`, optional `collection_id`) |
+| `GET /agent/runs` / `GET /agent/runs/{id}` | List runs / run status and activity |
+| `POST /agent/runs/{id}/resume` | Resume an interrupted or failed run |
+| `GET /agent/runs/{id}/report` / `…/report/download` | Report JSON / Markdown file |
+
 ## Project structure
 
 ```
 app/
-  api/routes/        FastAPI endpoints (documents, collections, research, conversations, reports)
-  graph/             LangGraph state, nodes, routing, workflow
+  agent/             deep-research agent: schemas, tools, prompts/LLM, state, nodes,
+                     routing, workflow, report rendering, run service
+  api/routes/        FastAPI endpoints (documents, research, conversations, reports, agent)
+  graph/             Q&A LangGraph state, nodes, routing, workflow
   ingestion/         loaders (PDF/TXT), chunking, FAISS index manager
   llm/               Gemini gateway, key pool, prompts, structured outputs, embeddings
   persistence/       SQLAlchemy models, repositories, checkpointer
@@ -139,6 +238,10 @@ All settings are environment variables (or `.env` / `.env.local`); see `.env.exa
 | `MAX_RETRIES` | Agent retry budget per question | `2` |
 | `RETRIEVAL_TOP_K` / `CHUNK_SIZE` | Retrieval and chunking | `5` / `1000` |
 | `DATA_DIR` | SQLite databases, uploads, FAISS indexes | `./data` |
+| `AGENT_MAX_TASKS` / `AGENT_MAX_TOOL_CALLS` | Research agent plan size / tool-call budget per run | `5` / `12` |
+| `AGENT_MAX_TASK_RETRIES` / `AGENT_MAX_SECONDS` | Retries per task / time budget per run | `1` / `300` |
+| `AGENT_MAX_SOURCES` / `AGENT_TOOL_TIMEOUT_SECONDS` | Sources kept per run / per-tool timeout | `24` / `30` |
+| `WEB_SEARCH_PROVIDER` / `TAVILY_API_KEY` | `tavily` enables web search (key in `.env.local`) | `none` |
 | `APP_ACCESS_CODE` | Optional code required to open the UI (public deployments) | — |
 | `LANGSMITH_TRACING` | Optional LangSmith tracing | `false` |
 
@@ -149,7 +252,7 @@ models add capacity too, because each model has its own quota.
 ## Testing & evaluation
 
 ```bash
-pytest                         # 111 offline tests — no API keys or network needed
+pytest                         # 172 offline tests — no API keys or network needed
 pytest -m live                 # real Gemini calls (uses quota)
 ruff check . && mypy app
 python -m app.evaluation.run               # retrieval hit@k and MRR
@@ -157,7 +260,14 @@ python -m app.evaluation.run --with-llm    # plus answer-quality metrics
 ```
 
 The offline suite uses scripted fake LLMs to test the graph's routing, retry limits,
-citation validation, ingestion edge cases, the key pool and the API.
+citation validation, ingestion edge cases, the key pool and the API. `tests/agent/`
+covers the research agent with a scripted `AgentLLM`, a fake web provider and
+`httpx.MockTransport` for Tavily. It tests planning and task caps, tool argument
+validation, tool exposure and selection, the no-tool fallback, routing, the success path,
+retries and the retry budget, tool-call and time limits, timeouts and provider failures,
+empty results, citation validation, thread isolation, checkpoint resume, interrupted-run
+detection, report persistence and download, and behaviour with web search disabled and
+enabled.
 
 ## Deployment
 
@@ -197,6 +307,11 @@ python -m app.scripts.rebuild_index            # all collections
 - Ingestion is synchronous (fine for small batches; large uploads block the request).
 - On free hosting, data resets on restart (demo documents reload automatically).
 - Free-tier Gemini quotas are small; heavy use exhausts them for the day.
+- The research agent's verification is lexical: it catches invented or off-topic claims,
+  but a finding can reuse a source's words and still overstate it.
+- Agent runs execute in a background thread of the API process (at most two at a time),
+  not in a job queue; resume restarts the time budget.
+- Web search needs a Tavily key; without one the agent says it used documents only.
 - The LLM judge is an estimate, not a guarantee — citations are checked deterministically,
   but whether a quote fully *supports* a claim is judged by a model.
 
@@ -205,5 +320,6 @@ python -m app.scripts.rebuild_index            # all collections
 - Background ingestion queue with progress, and OCR for scanned PDFs.
 - Hybrid retrieval (BM25 + vectors) and a reranker.
 - User accounts and per-user collections.
-- Streaming answers and live progress for each agent step.
+- Streaming answers for the Q&A mode (the research agent already shows live progress).
+- A job queue for research runs, and human approval in the UI for side-effecting tools.
 

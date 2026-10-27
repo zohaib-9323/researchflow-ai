@@ -223,6 +223,7 @@ def setup_page() -> dict[str, Any] | None:
         )
         html_block('<div class="rf-side-label">Workspace</div>')
         st.page_link("views/research.py", label="Ask your documents", icon=":material/search:")
+        st.page_link("views/agent.py", label="Deep research", icon=":material/travel_explore:")
         st.page_link("views/documents.py", label="Document library", icon=":material/folder_open:")
         st.page_link("views/history.py", label="Past research", icon=":material/history:")
         st.write("")

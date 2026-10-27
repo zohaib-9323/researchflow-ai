@@ -91,6 +91,20 @@ class Settings(BaseSettings):
     max_question_chars: int = Field(default=2000, ge=10)
     max_history_turns: int = Field(default=6, ge=0)
 
+    # --- Research agent (planned, tool-using research runs) -------------------------------
+    # Hard limits, enforced by graph routing and the tool executor (never by prompts).
+    agent_max_tasks: int = Field(default=5, ge=1, le=12)
+    agent_max_tool_calls: int = Field(default=12, ge=1, le=60)
+    agent_max_task_retries: int = Field(default=1, ge=0, le=4)
+    agent_max_seconds: float = Field(default=300.0, gt=0, le=3600)
+    agent_max_sources: int = Field(default=24, ge=1, le=100)
+    agent_max_context_chars: int = Field(default=14000, ge=2000, le=200000)
+    agent_tool_timeout_seconds: float = Field(default=30.0, gt=0, le=300)
+    # Web search is optional; without a provider the agent uses document search only.
+    web_search_provider: Literal["none", "tavily"] = "none"
+    tavily_api_key: SecretStr | None = None
+    web_search_max_results: int = Field(default=5, ge=1, le=10)
+
     # --- API / UI -------------------------------------------------------------------------
     cors_origins: str = "http://localhost:8501"
     api_base_url: str = "http://localhost:8000"
@@ -127,6 +141,10 @@ class Settings(BaseSettings):
         return self
 
     # ------------------------------------------------------------------------------------
+    @property
+    def web_search_configured(self) -> bool:
+        return self.web_search_provider == "tavily" and self.tavily_api_key is not None
+
     @property
     def api_keys(self) -> list[str]:
         """All configured Gemini keys, deduplicated, in priority order."""
