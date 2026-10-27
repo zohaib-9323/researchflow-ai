@@ -249,7 +249,8 @@ All settings are environment variables (or `.env` / `.env.local`); see `.env.exa
 | `ADMIN_EMAILS` | Comma-separated Google emails with unlimited use and library access | — |
 | `FREE_QUESTIONS` / `FREE_AGENT_RUNS` | Free credits per signed-in user | `2` / `2` |
 | `AUTH_ENABLED` / `INTERNAL_API_TOKEN` | Enforce users and credits in the API (automatic on Streamlit Cloud) | `false` |
-| `APP_ACCESS_CODE` | Shared code to open the UI, used only when Google sign-in isn't configured | — |
+| `REQUIRE_SIGN_IN` | Keep the app closed unless Google sign-in is configured | `true` on Streamlit Cloud, else `false` |
+| `APP_ACCESS_CODE` | Shared code to open the UI locally, when sign-in isn't required or configured | — |
 | `LANGSMITH_TRACING` | Optional LangSmith tracing | `false` |
 
 **About free-tier quotas:** Gemini free-tier limits apply per Google Cloud *project* and per
@@ -302,8 +303,9 @@ enabled.
    To get the Google client: Google Cloud Console → **APIs & Services → OAuth consent
    screen** (External; publish it so any Google user can sign in) → **Credentials →
    Create credentials → OAuth client ID → Web application**, with the authorized redirect
-   URI `https://<your-app>.streamlit.app/oauth2callback`. Without the `[auth]` section,
-   the app falls back to `APP_ACCESS_CODE` (a shared code) if set.
+   URI `https://<your-app>.streamlit.app/oauth2callback`. Sign-in is mandatory on
+   Streamlit Cloud: until `[auth]` and `[auth.google]` hold real values, the app shows a
+   "temporarily unavailable" page instead of opening to everyone.
 4. Deploy. The app runs the API inside the Streamlit process, uses `fastembed` (ONNX) for
    embeddings, and loads the demo documents on first start (sample reports and 10 arXiv
    papers on RAG, retrieval and LLMs).

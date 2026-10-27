@@ -5,12 +5,13 @@ Run with:  streamlit run frontend/streamlit_app.py
 On single-process hosts (Streamlit Community Cloud) the API runs inside this process,
 see embedded.py.
 
-Access control, in order of preference:
-* Google sign-in, when an [auth] section is present in Streamlit secrets. Every user gets
-  free credits (FREE_QUESTIONS / FREE_AGENT_RUNS); emails in ADMIN_EMAILS are unlimited.
-  Credits are enforced by the API, which only trusts requests carrying the internal token.
-* Otherwise APP_ACCESS_CODE, a shared code, if set.
-* Otherwise the app is open (local development).
+Access control:
+* Google sign-in, when an [auth] section with a Google client is in Streamlit secrets. Every
+  user gets free credits (FREE_QUESTIONS / FREE_AGENT_RUNS); emails in ADMIN_EMAILS are
+  unlimited. Credits are enforced by the API, which only trusts the internal token.
+* Sign-in is mandatory on Streamlit Community Cloud (REQUIRE_SIGN_IN defaults to true there):
+  if it isn't configured, the app stays closed rather than falling back to open access.
+* Locally, without sign-in: APP_ACCESS_CODE (a shared code) if set, otherwise open.
 """
 
 from __future__ import annotations
@@ -25,10 +26,6 @@ from ui_common import CSS, auth_configured, hero, html_block, icon
 st.set_page_config(page_title="ResearchFlow AI", page_icon="🔎", layout="wide")
 
 embedded.export_secrets()
-if embedded.enabled():
-    embedded.configure_auth(auth_configured())
-    embedded.ensure_backend()
-
 ACCESS_CODE = os.environ.get("APP_ACCESS_CODE", "")
 
 
@@ -97,6 +94,19 @@ def unverified_page() -> None:
             st.logout()
 
 
+def sign_in_unavailable_page() -> None:
+    _, middle, _ = st.columns([1, 2, 1])
+    with middle:
+        _centered_hero(
+            "Temporarily unavailable",
+            "Sign-in isn't set up yet, so the app is closed. Please check back soon.",
+        )
+        st.caption(
+            "Administrator: add the [auth] and [auth.google] sections (redirect_uri, "
+            "cookie_secret, client_id, client_secret) to the app's secrets, then reboot it."
+        )
+
+
 def access_gate() -> None:
     _, middle, _ = st.columns([1, 2, 1])
     with middle:
@@ -114,7 +124,15 @@ def access_gate() -> None:
                 st.error("That code isn't right.")
 
 
-if auth_configured():
+sign_in = auth_configured()
+if embedded.sign_in_required() and not sign_in:
+    sign_in_unavailable_page()  # fail closed: never fall back to an open app
+    st.stop()
+if embedded.enabled():
+    embedded.configure_auth(sign_in)
+    embedded.ensure_backend()
+
+if sign_in:
     if not st.user.is_logged_in:
         sign_in_page()
         st.stop()

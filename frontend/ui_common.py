@@ -163,11 +163,15 @@ def get_client() -> ApiClient:
 
 # -- signed-in user ----------------------------------------------------------------------------
 def auth_configured() -> bool:
-    """Google sign-in is configured through an [auth] section in Streamlit secrets."""
+    """Google sign-in is configured: an [auth] section with a real Google client in secrets."""
     try:
-        return "auth" in st.secrets
+        auth = st.secrets.get("auth", {})
+        google = auth.get("google", {})
+        values = [auth.get("redirect_uri"), auth.get("cookie_secret")]
+        values += [google.get("client_id"), google.get("client_secret")]
     except Exception:  # no secrets file
         return False
+    return all(isinstance(v, str) and v.strip() and "PASTE" not in v for v in values)
 
 
 def signed_in_user() -> dict[str, str] | None:

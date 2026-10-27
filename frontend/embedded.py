@@ -53,11 +53,23 @@ def configure_auth(sign_in: bool) -> None:
     os.environ.setdefault("INTERNAL_API_TOKEN", secrets.token_urlsafe(32))
 
 
+def hosted() -> bool:
+    return Path("/mount/src").is_dir()  # Streamlit Community Cloud checkout location
+
+
 def enabled() -> bool:
     flag = os.environ.get("EMBEDDED_API", "").strip().lower()
     if flag:
         return flag in {"1", "true", "yes"}
-    return Path("/mount/src").is_dir()  # Streamlit Community Cloud checkout location
+    return hosted()
+
+
+def sign_in_required() -> bool:
+    """Hosted deployments always require Google sign-in; locally it's opt-in."""
+    flag = os.environ.get("REQUIRE_SIGN_IN", "").strip().lower()
+    if flag:
+        return flag in {"1", "true", "yes"}
+    return hosted()
 
 
 @st.cache_resource(show_spinner="Starting the research engine…")
